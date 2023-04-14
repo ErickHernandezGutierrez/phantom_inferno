@@ -2,7 +2,7 @@
 .vscode
 
 # folder containing different studies
-studies/*
+studies/
 
 # python cache folder
-_pycache_
+__pycache__/
