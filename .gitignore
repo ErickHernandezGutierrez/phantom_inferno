@@ -1,0 +1,8 @@
+#launch.json folde
+.vscode
+
+# folder containing different studies
+studies/*
+
+# python cache folder
+_pycache_
