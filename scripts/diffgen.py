@@ -22,12 +22,26 @@ def lambdas2md(lambda1, lambda2):
     return (lambda1+lambda2+lambda2)/3.0
 
 parser = argparse.ArgumentParser(description='Generate phantom lambdas (diffusivities).')
-parser.add_argument('--phantom', default='Training_3D_SF', help='path to the phantom structure')
-parser.add_argument('--study_path', help='path to the study folder')
-parser.add_argument('--nsubjects', type=int, default=1, help='number of subjects to generate (default: 1)')
+parser.add_argument('phantom', default='Training_3D_SF', help="phantom structure {Training_3D_SF,Training_SF,Training_X}. default: 'Training_3D_SF'")
+parser.add_argument('model', default='multi-tensor', help="model for the phantom {multi-tensor,standard-model}. default: 'multi-tensor'")
+parser.add_argument('study_path', help='path to the study folder')
+parser.add_argument('--nsubjects', type=int, default=1, help='number of subjects to generate. default: 1')
 
-parser.add_argument('--healthy_lambdas', type=float, default=[1.7e-3, 0.3e-3], nargs=2, help='diffusivities for healthy tissue (default: [1.7e-3, 0.3e-3] mm^2/s)')
-parser.add_argument('--damaged_lambdas', type=float, default=[1.7e-3, 0.3e-3], nargs=2, help='diffusivities for damaged tissue (default: [1.7e-3, 0.3e-3] mm^2/s)')
+parser.add_argument('--healthy_lambdas', type=float, default=[1.7e-3, 0.3e-3], nargs=2, help='diffusivities for healthy tissue. default: [1.7e-3, 0.3e-3] mm^2/s')
+parser.add_argument('--damaged_lambdas', type=float, default=[1.7e-3, 0.3e-3], nargs=2, help='diffusivities for damaged tissue. default: [1.7e-3, 0.3e-3] mm^2/s')
+
+#parser.add_argument('--d_par',  type=float, default=[1.7e-3, 1.7e-3], nargs=2, help='IC and EC parallel diffusivities. default: [1.7e-3, 1.7e-3] mm^2/s')
+parser.add_argument('--d_par_ic',  type=float, default=1.7e-3, help='IC parallel diffusivity. default: 1.7e-3 mm^2/s')
+parser.add_argument('--d_par_ec',  type=float, default=1.7e-3, help='EC parallel diffusivity. default: 1.7e-3 mm^2/s')
+parser.add_argument('--d_perp_ec', type=float, default=0.5e-3, help='EC perpendicular diffusivity. default: 0.5e-3 mm^2/s')
+parser.add_argument('--d_iso',     type=float, default=0.3e-3, help='ISO diffusivity. default: 0.3e-3 mm^2/s')
+parser.add_argument('--size_ic',  type=float, default=0.7,  help='size of the intra-cellular compartment')
+parser.add_argument('--size_ec',  type=float, default=0.25, help='size of the extra-cellular compartment')
+parser.add_argument('--size_iso', type=float, default=0.05, help='size of the isotropic compartment')
+
+parser.add_argument('--lesion_d_par', type=float, nargs=2, default=[1.7e-3, 1.7e-3], help='IC and EC parallel diffusivities (default: [1.7e-3, 1.7e-3] mm^2/s)')
+parser.add_argument('--lesion_d_perp', type=float, default=[0.5e-3], help='EC perpendicular diffusivity (default: 0.5e-3 mm^2/s)')
+parser.add_argument('--lesion_d_iso', type=float, default=[0.3e-3], help='ISO diffusivity (default: 0.3e-3 mm^2/s)')
 
 parser.add_argument('--lesion_mask', nargs='*', default=['no-lesion-mask-1.nii', 'no-lesion-mask-2.nii', 'no-lesion-mask-3.nii'], help='lesion mask')
 parser.add_argument('--healthy_mean', type=float, nargs=2, help='mean of diffusivities for healthy tissue')
@@ -40,6 +54,8 @@ args = parser.parse_args()
 
 phantom = args.phantom
 study = args.study_path
+model = args.model
+
 nsubjects = args.nsubjects
 
 N = {
@@ -68,11 +84,20 @@ if args.healthy_var and args.lesion_var:
     healthy_lambda1_var, healthy_lambda23_var = args.healthy_var
     damaged_lambda1_var, damaged_lambda23_var = args.lesion_var
 
-lambda1  = np.array( [args.healthy_lambdas[0]]*(3*nsubjects) )
-lambda23 = np.array( [args.healthy_lambdas[1]]*(3*nsubjects) )
+if args.healthy_lambdas and args.damaged_lambdas:
+    lambda1  = np.array( [args.healthy_lambdas[0]]*(3*nsubjects) )
+    lambda23 = np.array( [args.healthy_lambdas[1]]*(3*nsubjects) )
 
-lesion_lambda1  = np.array( [args.damaged_lambdas[0]]*(3*nsubjects) )
-lesion_lambda23 = np.array( [args.damaged_lambdas[1]]*(3*nsubjects) )
+    lesion_lambda1  = np.array( [args.damaged_lambdas[0]]*(3*nsubjects) )
+    lesion_lambda23 = np.array( [args.damaged_lambdas[1]]*(3*nsubjects) )
+
+d_par_ic  = args.d_par_ic
+d_par_ec  = args.d_par_ec
+d_perp_ec = args.d_perp_ec
+d_iso     = args.d_iso
+size_ic   = args.size_ic
+size_ec   = args.size_ec
+size_iso  = args.size_iso
 
 """
 healthy_lambda1_mean  = 1.38e-3
@@ -146,8 +171,6 @@ for i in range(nbundles):
     lesion_mask[:,:,:, i] = nib.load('%s/%s' % (phantom,lesion_mask_filenames[i])).get_fdata()
 
 if args.healthy_mean and args.lesion_mean:
-    print('pedo')
-
     # Plot diffusivities distributions
     if args.show_hist:
         plot_histograms(healthy_lambda1_mean, healthy_lambda23_mean, damaged_lambda1_mean, damaged_lambda23_mean)
@@ -194,7 +217,7 @@ if not os.path.exists( study ):
 for sub_id in range(nsubjects):
     subject = '%s/sub-%.3d_ses-1' % (study,sub_id+1)
 
-    print('generating lambdas for %s from %s' % (subject,phantom))
+    print('generating lambdas for %s from phantom %s' % (subject,phantom))
 
     lambdas = np.zeros((X,Y,Z, 3*nbundles))
     ad = np.zeros((X,Y,Z, nbundles))

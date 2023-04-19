@@ -6,36 +6,36 @@ from utils import *
 from scipy.special import hyp1f1 as M
 
 parser = argparse.ArgumentParser(description='Generate phantom signal.')
-parser.add_argument('--phantom', help='path to the phantom structure')
-parser.add_argument('--study_path', help='path to the study folder')
-#parser.add_argument('--subject_path', help='path to the subject folder')
-parser.add_argument('--scheme', help='protocol file in format Nx4 text file with [X Y Z b] at each row')
-parser.add_argument('--snr', type=int, help='signal to noise ratio')
-parser.add_argument('--nsubjects', default=1, type=int, help='number of subjects in the study')
-#parser.add_argument('--nbundles',  default=1, type=int, help='number of bundles in the phantom')
+parser.add_argument('phantom', help='path to the phantom structure')
+parser.add_argument('model', default='multi-tensor', help='model for the phantom: multi-tensor or standard-model (default: multi-tensor)')
+parser.add_argument('study_path', help='path to the study folder')
+parser.add_argument('scheme', help='protocol file in format Nx4 text file with [X Y Z b] at each row')
+
+parser.add_argument('--snr', type=int, help='signal to noise ratio (default: inf)')
+parser.add_argument('--nsubjects', default=1, type=int, help='number of subjects in the study (default: 1)')
 parser.add_argument('--ndirs', default=5000, type=int, help='number of dispersion directions (default: 5000)')
-parser.add_argument('--select_bundles', type=int, nargs='*', help='bundles to be included in the phantom')
+parser.add_argument('--select_bundles', type=int, nargs='*', help='bundles to be included in the phantom (default: all)')
 
 args = parser.parse_args()
 
 phantom = args.phantom
-
-# folder of the study
+model = args.model
 study = args.study_path
-
 scheme_filename = args.scheme
+
 if args.snr:
     SNR = args.snr
 nsubjects = args.nsubjects
 ndirs = args.ndirs
 
+# number of bundles for each structure
 N = {
-    'phantoms/Training_3D_SF': 3,
-    'phantoms/Training_SD_X': 2,
-    'phantoms/Training_SF': 5,
-    'phantoms/Training_X': 2
+    'structures/Training_3D_SF': 3,
+    'structures/Training_SF': 5,
+    'structures/Training_X': 2
 }
 
+# total number of bundles
 nbundles = N[phantom]
 
 if args.select_bundles:
@@ -46,61 +46,15 @@ if args.select_bundles:
 else:
     selected_bundles = range(nbundles)
 
+# number of selected bundles
 nselected = len(selected_bundles)
-
-# folder of the subject
-#subject = sys.argv[2]
-
-# Compute a rotation matrix corresponding to the orientation (azimuth,zenith)
-#     azimuth (phi):	angle in the x-y plane
-#     zenith  (theta):	angle in the x-z plane
-# ---------------------------------------------------------------------------
-def get_rotation(azimuth, zenith):
-    azimuth = azimuth % (2*np.pi)
-    zenith  = zenith % (np.pi)
-    
-    azimuth_rotation = np.array([
-        [np.cos(azimuth), -np.sin(azimuth), 0.0],
-        [np.sin(azimuth),  np.cos(azimuth), 0.0],
-        [0.0,              0.0,             1.0]
-    ])
-
-    zenith_rotation = np.array([
-        [ np.cos(zenith), 0.0, np.sin(zenith)],
-        [ 0.0,            1.0,            0.0],
-        [-np.sin(zenith), 0.0, np.cos(zenith)]
-    ])
-
-    #return np.matmul(zenith_rotation, azimuth_rotation) # primero aplica la zenith
-    #return np.matmul(azimuth_rotation, zenith_rotation) # primero aplica la azimuth
-
-    return zenith_rotation @ azimuth_rotation
-
-def get_acquisition(voxel, scheme, noise=False, dispersion=False, sigma=0.0):
-    nsamples = len(scheme)
-    signal = np.zeros(nsamples)
-
-    for i in range(nsamples):
-        signal[i] = E(g=scheme[i][0:3], b=scheme[i][3], voxel=voxel, noise=noise, dispersion=dispersion)
-        # todo: add noise to the signal
-
-    return signal
-
-def tensor_signal(g, b, pdd, lambdas):
-    e = sph2cart(1, pdd[0], pdd[1])
-    
-    d = np.dot(g, e)
-
-    gDg = lambdas[1]*(1 - d**2) + lambdas[0]*(d**2)
-
-    return np.exp( -b*(gDg) )
 
 """
 pdd: (nvoxels, 3)
 ndirs: int
 kappa: float
 """
-def get_dispersion_vec(pdd, ndirs, kappa):
+def get_dispersion(pdd, ndirs, kappa):
     #p = sph2cart(1.0, azimuth, zenith)
     nvoxels = pdd.shape[0]
 
@@ -126,22 +80,34 @@ def get_dispersion_vec(pdd, ndirs, kappa):
 
     return dirs, weights
 
-def vec(pdd, g, b, lambda1, lambda23):
+def tensor_signal(pdd, d_par, d_perp, g, b):
     nvoxels  = pdd.shape[0]
     nsamples = g.shape[0]
     
+    # (nvoxels,nsamples) <- (nvoxels,3) @ (3,nsamples)
     dot = pdd @ g.transpose()
 
     ones = np.ones( (nvoxels,nsamples) )
 
-    gDg = lambda23@(ones - dot**2) + lambda1@(dot**2)
+    # (nvoxels,nsamples) <- (nvoxels,nvoxels)@(nvoxels,nsamples) + (nvoxels,nvoxels)@(nvoxels,nsamples)
+    gDg = d_perp@(ones - dot**2) + d_par@(dot**2)
 
+    # (nvoxels,nsamples) <- (nvoxels,nsamples) @ (nsamples,nsamples)
     return np.exp( -gDg@b )
 
-def get_acquisition_dispersion(pdd, g, b, lambda1, lambda2, ndirs, kappa):
+def stick_signal(pdd, d_par, g, b):
+    #d_par = np.array( [d_par]*nvoxels*nsamples ).reshape(nvoxels,nsamples)
+
+    # (nvoxels,nsamples) <- (nvoxels,3) @ (3,nsamples)
+    dot = pdd @ g.transpose()
+
+    # (nvoxels,nsamples) <- (nvoxels,nvoxels) @ (nvoxels,nsamples) @ (nsamples,nsamples)
+    return np.exp( -(d_par@(dot**2))@b )
+
+def tensor_signal_with_dispersion(pdd, g, b, lambda1, lambda2, ndirs, kappa):
     G = np.tile(g.transpose(),(nvoxels,1)).reshape(nvoxels, 3, nsamples)
 
-    dirs, weights = get_dispersion_vec(pdd, ndirs, kappa)
+    dirs, weights = get_dispersion(pdd, ndirs, kappa)
 
     # (nvoxels, ndirs, nsamples)
     DOT = np.matmul(dirs, G)
@@ -162,6 +128,11 @@ def get_acquisition_dispersion(pdd, g, b, lambda1, lambda2, ndirs, kappa):
 
     return S
 
+""" Add Rician noise to the signal ----------------------------------------------
+
+S: input signal with shape (nvoxels,nsamples)
+SNR: signal to noise ratio
+"""
 def add_noise(S, SNR):
     nvoxels  = S.shape[0]
     nsamples = S.shape[1]
@@ -172,69 +143,13 @@ def add_noise(S, SNR):
 
     return np.sqrt( (S + z)**2 + w**2 )
 
-# Probe the signal at a given q-space coordinate for a given voxel configuration
-# ------------------------------------------------------------------------------
-def E(g, b, voxel, noise=False, dispersion=False):
-    ntensors = voxel['nfascicles']
-    pdds = voxel['pdds']
-    R = voxel['rotmats']
-    lambdas = voxel['eigenvals']
-    ndirs = voxel['ndirs']
-    kappa = voxel['kappa']
-    alphas = voxel['fractions']
-    sigma = voxel['sigma']
-
-    signal = 0
-    for i in range(ntensors):
-        if dispersion:
-            pdd = pdds[i]
-            dirs,weights = get_dispersion(pdd[0], pdd[1], ndirs, kappa)
-
-            dispersion_signal = 0
-            for j in range(ndirs):
-                dispersion_signal += weights[j]*tensor_signal(g, b, dirs[j], lambdas[i])
-
-            signal += alphas[i]*dispersion_signal
-        else:
-            signal += alphas[i]*tensor_signal(g, b, pdds[i], lambdas[i])
-
-    if noise:
-        s = sigma * np.random.normal(loc=0, scale=1, size=2)
-        signal = np.sqrt( (signal + s[0])**2 + s[1]**2 )
-
-    return signal
-
-bundle1_rotmat = np.array([
-    [-0.1227878 , -0.70710678,  0.69636424],
-    [-0.1227878 ,  0.70710678,  0.69636424],
-    [-0.98480775,  0.        , -0.17364818]
-])
-
-bunndle2_rotmat = np.array([
-    [ 0.1227878 ,  0.70710678,  0.69636424],
-    [-0.1227878 ,  0.70710678, -0.69636424],
-    [-0.98480775,  0.        ,  0.17364818]
-])
-
-#nbundles = 1
-
 numcomp_filename = '%s/numcomp.nii' % phantom
 numcomp = nib.load( numcomp_filename ).get_fdata().astype(np.uint8)
-
-#mask_filename = '%s/wm-mask-1.nii' % phantom
-#mask = nib.load( mask_filename ).get_fdata().astype(np.uint8)
 
 scheme = load_scheme( scheme_filename )
 X,Y,Z = numcomp.shape # dimensions of the phantom
 nsamples = len(scheme)
 nvoxels = X*Y*Z
-#voxels = itertools.product( range(X), range(Y), range(Z) )
-
-#if nbundles > 1:
-#    compsize_filename = '%s/compsize.nii' % phantom
-#else:
-#    compsize_filename = '%s/wm-mask-%d.nii' % (phantom, bundles[0])
-#compsize = nib.load( compsize_filename ).get_fdata().reshape( X,Y,Z, nbundles )
 
 # load WM masks
 mask = np.zeros((X,Y,Z, nbundles), dtype=np.uint8)
@@ -252,18 +167,6 @@ for (x,y,z) in itertools.product( range(X), range(Y), range(Z) ):
         for i in selected_bundles:
             compsize[x,y,z, i] = mask[x,y,z, i] / numcomp[x,y,z]
 
-"""
-if nbundles == 3:
-    compsize = nib.load( compsize_filename ).get_fdata()
-else:
-    compsize = np.ones( (X,Y,Z,3), dtype=np.uint8 )
-    compsize[:,:,:,0] *= mask
-    compsize[:,:,:,1] *= masktype=int,
-    compsize[:,:,:,2] *= mask
-"""
-
-#SNRs = [30, 12, np.inf]
-
 # matrix with gradient directions
 g = scheme[:,0:3]
 
@@ -271,19 +174,18 @@ g = scheme[:,0:3]
 b = np.identity( nsamples ) * scheme[:,3]
 
 # matrix with PDDs
-pdd = nib.load( '%s/pdds.nii'%phantom ).get_fdata().reshape(nvoxels, 9)
+pdd = nib.load( '%s/pdds.nii'%phantom ).get_fdata().reshape(nvoxels, 3*nbundles) # 3 dirs x bundle
 
 for sub_id in range(nsubjects):
     subject = 'sub-%.3d_ses-1' % (sub_id+1)
 
     print('Generating signal for subject %s/' % subject)
 
-    dwi = np.zeros( (X,Y,Z, nsamples) ) # volume for subject
+    dwi = np.zeros( (X,Y,Z, nsamples) )
     
     lambdas_file = nib.load('%s/%s/ground_truth/lambdas.nii'%(study,subject))
     header = lambdas_file.header
-    #header['pixdim'][1:4] = [2,2,2]
-    lambdas = lambdas_file.get_fdata().reshape(nvoxels, 3*nbundles) # eigenvalues per voxel
+    lambdas = lambdas_file.get_fdata().reshape(nvoxels, 3*nbundles) # 3 eigenvalues x bundle
 
     signal = np.zeros((nvoxels,nsamples))
     for i in selected_bundles:
@@ -292,14 +194,13 @@ for sub_id in range(nsubjects):
 
         alpha = np.identity( nvoxels ) * compsize[:,:,:, i].flatten()
         
-        S = vec(pdd[:, 3*i:3*i+3], g, b, lambda1, lambda2)
+        S = tensor_signal(pdd[:, 3*i:3*i+3], lambda1, lambda2, g, b)
         S = alpha @ S
 
         signal += S
 
     dwi = signal.reshape(X,Y,Z, nsamples)
     dwi_file = nib.Nifti1Image(dwi, np.identity(4), header) 
-    #dwi_file.header['pixdim'][1:4] = [2,2,2]
     nib.save(dwi_file, '%s/%s/ground_truth/dwi.nii'% (study,subject) )
 
     if args.snr:
@@ -307,5 +208,4 @@ for sub_id in range(nsubjects):
 
     dwi = signal.reshape(X,Y,Z, nsamples)
     dwi_file = nib.Nifti1Image(dwi, np.identity(4), header) 
-    #dwi_file.header['pixdim'][1:4] = [2,2,2]
     nib.save( dwi_file, '%s/%s/dwi.nii' % (study,subject) )
