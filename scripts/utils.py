@@ -30,7 +30,6 @@ def sph2cart(r, azimuth, zenith):
     x = r * np.cos(azimuth) * np.sin(zenith)
     y = r * np.sin(azimuth) * np.sin(zenith)
     z = r * np.cos(zenith)
-    print(x.shape)
 
     dirs = np.zeros((x.shape[0], x.shape[1], 3))
 
@@ -50,3 +49,15 @@ def cart2sph(x, y, z):
     
     return azimuth, zenith, r
 
+# Load dispersion dirs from file
+#------------------------------------------------------------
+def load_dispersion_dirs(ndirs):
+    with open('data/PuntosElectroN%d.txt' % ndirs) as file:
+        lines = file.readlines()
+
+        dirs = np.zeros( (ndirs,3), dtype=np.float32 )
+
+        for i,line in enumerate(lines):
+            dirs[i,:] = np.array([float(val) for val in line.split(' ')])
+
+    return dirs
