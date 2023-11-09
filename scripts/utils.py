@@ -1,5 +1,5 @@
 import numpy as np
-
+import itertools
 
 # Load the DWI protocol
 # ------------------------------------------------------------
@@ -16,7 +16,7 @@ def load_scheme(scheme_filename):
         x,y,z,b = line.split(' ')
         scheme.append( [float(x),float(y),float(z),float(b)] )
 
-    return np.array( scheme )
+    return np.array( scheme, dtype=np.float32 )
 
 
 # Give a random sample of angles between to limits
@@ -61,3 +61,19 @@ def load_dispersion_dirs(ndirs):
             dirs[i,:] = np.array([float(val) for val in line.split(' ')])
 
     return dirs
+
+# Compute the success rate of a mosemap given a reference mosemap
+#------------------------------------------------------------
+def success_rate(ref, mosemap):
+    X,Y,Z = ref.shape
+    voxels = itertools.product( range(X), range(Y), range(Z) )
+
+    success,total = 0,0
+
+    for (x,y,z) in voxels:
+        if ref[x,y,z]!=0 or mosemap[x,y,z]!=0:
+            total += 1
+            if ref[x,y,z] == mosemap[x,y,z]:
+                success += 1
+
+    return success / float(total)
