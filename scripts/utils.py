@@ -52,13 +52,13 @@ def cart2sph(x, y, z):
 # Load dispersion dirs from file
 #------------------------------------------------------------
 def load_dispersion_dirs(ndirs):
-    with open('data/PuntosElectroN%d.txt' % ndirs) as file:
+    with open('data/points/PuntosElectroN%d.txt' % ndirs) as file:
         lines = file.readlines()
 
         dirs = np.zeros( (ndirs,3), dtype=np.float32 )
 
         for i,line in enumerate(lines):
-            dirs[i,:] = np.array([float(val) for val in line.split(' ')[:-1]])
+            dirs[i,:] = np.array([float(val) for val in line.split(' ')])
 
     return dirs
 
