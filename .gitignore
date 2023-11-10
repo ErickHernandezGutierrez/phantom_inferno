@@ -6,3 +6,4 @@ studies
 
 # python cache folder
 __pycache__
+scripts/__pycache__
