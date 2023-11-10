@@ -58,7 +58,7 @@ def load_dispersion_dirs(ndirs):
         dirs = np.zeros( (ndirs,3), dtype=np.float32 )
 
         for i,line in enumerate(lines):
-            dirs[i,:] = np.array([float(val) for val in line.split(' ')])
+            dirs[i,:] = np.array([float(val) for val in line.split(' ')[:-1]])
 
     return dirs
 
