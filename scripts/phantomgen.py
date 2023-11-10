@@ -15,12 +15,12 @@ parser.add_argument('--size_ic',  type=float, default=0.7,  help='size of the in
 parser.add_argument('--size_ec',  type=float, default=0.25, help='size of the extra-cellular compartment. required only for noddi')
 parser.add_argument('--size_iso', type=float, default=0.05, help='size of the isotropic compartment. required only for noddi')
 
-parser.add_argument('--snr', type=int, help='signal to noise ratio. default: inf')
-parser.add_argument('--nsubjects', default=1, type=int, help='number of subjects in the study. default: 1')
-parser.add_argument('--ndirs', default=250, type=int, help='number of dispersion directions. default: 250')
-parser.add_argument('--vsize', type=int, default=1, help='voxel size in mm. default: 1')
-parser.add_argument('--kappa', type=int, default=[24], nargs='*', help='kappa dispersion value. default: 24')
-parser.add_argument('--select_bundles', type=int, nargs='*', help='bundles to be included in the phantom. default: all')
+parser.add_argument('--snr',       default=30,   type=int, help='signal to noise ratio. default: 30')
+parser.add_argument('--nsubjects', default=1,    type=int, help='number of subjects in the study. default: 1')
+parser.add_argument('--ndirs',     default=5000, type=int, help='number of dispersion directions. default: 5000')
+parser.add_argument('--vsize',     default=1,    type=int, help='voxel size in mm. default: 1')
+parser.add_argument('--kappa',     default=[24], type=int, nargs='*', help='kappa dispersion value per bundle. default: 24')
+parser.add_argument('--select_bundles', type=int, nargs='*', help='list of the bundles to be included in the phantom. default: all')
 parser.add_argument('-dispersion', help='add dispersion to the signal', action='store_true')
 parser.add_argument('-noise', help='add noise to the signal', action='store_true')
 
@@ -100,8 +100,8 @@ def tensor_signal(pdd, d_par, d_perp, g, b):
 
     ones = np.ones( (nvoxels,nsamples), dtype=np.float32 )
 
-    # (nvoxels,nsamples) <- (nvoxels,nvoxels)@(nvoxels,nsamples) + (nvoxels,nvoxels)@(nvoxels,nsamples)
-    gDg = d_perp@(ones - dot**2) + d_par@(dot**2)
+    # (nvoxels,nsamples) <- (nvoxels)*(nvoxels,nsamples) + (nvoxels)*(nvoxels,nsamples)
+    gDg = (d_perp*(ones - dot**2).transpose()).transpose() + (d_par*(dot**2).transpose()).transpose()
 
     # (nvoxels,nsamples) <- (nvoxels,nsamples) @ (nsamples,nsamples)
     return np.exp( -gDg@b )
@@ -110,8 +110,8 @@ def stick_signal(pdd, d_par, g, b):
     # (nvoxels,nsamples) <- (nvoxels,3) @ (3,nsamples)
     dot = pdd @ g.transpose()
 
-    # (nvoxels,nsamples) <- (nvoxels,nvoxels) @ (nvoxels,nsamples) @ (nsamples,nsamples)
-    return np.exp( -(d_par@(dot**2))@b )
+    # (nvoxels,nsamples) <- (nvoxels) * (nvoxels,nsamples) @ (nsamples,nsamples)
+    return np.exp( (-d_par*((dot**2)@b).transpose()).transpose() )
 
 def stick_signal_with_dispersion(pdd, d_par, g, b, ndirs, kappa):
     nvoxels = pdd.shape[0]
@@ -254,25 +254,27 @@ for sub_id in range(nsubjects):
 
     dwi = np.zeros( (X,Y,Z, nsamples), dtype=np.float32 )
     
-    lambdas = nib.load('%s/%s/ground_truth/diffs.nii.gz'%(study,subject)).get_fdata().reshape(nvoxels, 3*nbundles).astype(np.float32) # 3 diffusivities x bundle
+    diffs = nib.load('%s/%s/ground_truth/diffs.nii.gz'%(study,subject)).get_fdata().reshape(nvoxels, 3*nbundles).astype(np.float32) # 3 diffusivities x bundle
 
     signal = np.zeros( (nvoxels,nsamples), dtype=np.float32 )
     for i in selected_bundles:
-        alpha = np.identity(nvoxels, dtype=np.float32) * compsize[:,:,:, i].flatten()
+        #alpha = np.identity(nvoxels, dtype=np.float32) * compsize[:,:,:, i].flatten()
+        alpha = compsize[:,:,:, i].flatten()
 
         print('\tBundle %d...' % (i+1))
 
-        S = get_acquisition(model, lambdas[:, 3*i:3*i+3], pdd[:, 3*i:3*i+3], g, b, kappa[i])
+        S = get_acquisition(model, diffs[:, 3*i:3*i+3], pdd[:, 3*i:3*i+3], g, b, kappa[i])
 
-        nib.save( nib.Nifti1Image(S.reshape(X,Y,Z, nsamples), np.identity(4)*vsize), '%s/%s/ground_truth/bundle-%d__dwi.nii.gz'%(study,subject,i+1) )
+        #signal += (alpha @ S)
+        signal += (alpha*S.transpose()).transpose()
 
-        signal += (alpha @ S)
-
-    dwi = signal.reshape(X,Y,Z, nsamples)
-    nib.save( nib.Nifti1Image(dwi, np.identity(4)*vsize), '%s/%s/ground_truth/dwi.nii.gz'%(study,subject) )
-
-    if args.snr:
-        signal = add_noise(signal, SNR=SNR)
+        nib.save( nib.Nifti1Image(S.reshape(X,Y,Z, nsamples), affine, header), '%s/%s/ground_truth/bundle-%d__dwi.nii.gz'%(study,subject,i+1) )
 
     dwi = signal.reshape(X,Y,Z, nsamples)
-    nib.save( nib.Nifti1Image(dwi, np.identity(4)*vsize), '%s/%s/dwi.nii.gz'%(study,subject) )
+    nib.save( nib.Nifti1Image(dwi, affine, header), '%s/%s/ground_truth/dwi.nii.gz'%(study,subject) )
+
+    if args.noise:
+        signal = add_noise(signal, SNR)
+
+    dwi = signal.reshape(X,Y,Z, nsamples)
+    nib.save( nib.Nifti1Image(dwi, affine, header), '%s/%s/dwi.nii.gz'%(study,subject) )
