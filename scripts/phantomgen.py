@@ -1,6 +1,6 @@
 import numpy as np
 import nibabel as nib
-import itertools, sys, argparse
+import itertools, sys, argparse, os
 from random import random
 from utils import *
 from scipy.special import hyp1f1 as M
@@ -15,11 +15,13 @@ parser.add_argument('--size_ic',  type=float, default=0.7,  help='size of the in
 parser.add_argument('--size_ec',  type=float, default=0.25, help='size of the extra-cellular compartment. required only for noddi')
 parser.add_argument('--size_iso', type=float, default=0.05, help='size of the isotropic compartment. required only for noddi')
 
-parser.add_argument('--snr',       default=30,   type=int, help='signal to noise ratio. default: 30')
-parser.add_argument('--nsubjects', default=1,    type=int, help='number of subjects in the study. default: 1')
-parser.add_argument('--ndirs',     default=5000, type=int, help='number of dispersion directions. default: 5000')
-parser.add_argument('--vsize',     default=1,    type=int, help='voxel size in mm. default: 1')
-parser.add_argument('--kappa',     default=[24], type=int, nargs='*', help='kappa dispersion value per bundle. default: 24')
+parser.add_argument('--snr',        default=30,   type=int, help='signal to noise ratio. default: 30')
+parser.add_argument('--nsubjects',  default=1,    type=int, help='number of subjects in the study. default: 1')
+parser.add_argument('--ndirs',      default=5000, type=int, help='number of dispersion directions. default: 5000')
+parser.add_argument('--vsize',      default=1,    type=int, help='voxel size in mm. default: 1')
+parser.add_argument('--batch_size', default=1000, type=int, help='Number of voxels in every batch')
+parser.add_argument('--nbatches',   default=125,  type=int, help='Total number of batches')
+parser.add_argument('--kappa',     default=[24],  type=int, nargs='*', help='kappa dispersion value per bundle. default: 24')
 parser.add_argument('--select_bundles', type=int, nargs='*', help='list of the bundles to be included in the phantom. default: all')
 parser.add_argument('-dispersion', help='add dispersion to the signal', action='store_true')
 parser.add_argument('-noise', help='add noise to the signal', action='store_true')
@@ -36,6 +38,8 @@ if args.snr:
 nsubjects = args.nsubjects
 ndirs = args.ndirs
 vsize = args.vsize
+nbatches = args.nbatches
+batch_size = args.batch_size
 
 # number of bundles for each structure
 N = {
@@ -204,25 +208,54 @@ def add_noise(S, SNR):
 
     return np.sqrt( (S + z)**2 + w**2 )
 
-numcomp_filename = '%s/numcomp.nii.gz' % phantom
-numcomp_file = nib.load( numcomp_filename )
-numcomp = numcomp_file.get_fdata().astype(np.uint8)
+def generate_batch(pdd, compsize, mask, g, b, nvoxels, nsamples, offset, bsize):
+    pdd = pdd[offset:offset+bsize, :]
 
-header = numcomp_file.header
-affine = numcomp_file.affine
-X,Y,Z  = numcomp.shape # dimensions of the phantom
+    signal_gt = np.zeros( (nsubjects,bsize,nsamples), dtype=np.float32 )
+    signal    = np.zeros( (nsubjects,bsize,nsamples), dtype=np.float32 )
 
+    for sub_id in range(nsubjects):
+        subject = 'sub-%.3d_ses-1' % (sub_id+1)
+
+        print('├── Subject %s' % subject)
+        
+        diffs = nib.load('%s/%s/ground_truth/diffs.nii.gz'%(study,subject)).get_fdata().reshape(nvoxels, 3*nbundles).astype(np.float32) # 3 diffusivities x bundle
+        diffs = diffs[offset:offset+bsize, :]
+
+        for i in selected_bundles:
+            alpha = compsize[:,:,:, i].flatten()
+            alpha = alpha[offset:offset+bsize]
+
+            print('│   ├── Bundle %d...' % (i+1))
+
+            S = get_acquisition(model, diffs[:, 3*i:3*i+3], pdd[:, 3*i:3*i+3], g, b, kappa[i])
+
+            signal_gt[sub_id, :, :] += (alpha*S.transpose()).transpose()
+
+            #nib.save( nib.Nifti1Image(S.reshape(X,Y,Z, nsamples), affine, header), '%s/%s/ground_truth/bundle-%d__dwi.nii.gz'%(study,subject,i+1) )
+
+        if args.noise:
+            signal[sub_id,:,:] = add_noise( signal_gt[sub_id,:,:], SNR)
+        else:
+            signal[sub_id,:,:] = signal_gt[sub_id,:,:]
+
+    return signal_gt, signal
+
+
+# load WM masks
+mask_filename = '%s/wm-mask.nii.gz' % (phantom)
+mask_file = nib.load( mask_filename )
+mask = mask_file.get_fdata().astype(np.uint8)
+
+# load header
+header = mask_file.header
+affine = mask_file.affine
+X,Y,Z  = mask.shape[0:3] # dimensions of the phantom
+
+# load protocol
 scheme = load_scheme( scheme_filename )
 nsamples = len(scheme)
 nvoxels = X*Y*Z
-
-# load WM masks
-"""
-mask = np.zeros((X,Y,Z, nbundles), dtype=np.uint8)
-for i in range(nbundles):
-    mask[:,:,:, i] = nib.load( '%s/bundle-%02d__wm-mask.nii.gz'%(phantom,i+1) ).get_fdata().astype(np.uint8)
-"""
-mask = nib.load( '%s/wm-mask.nii.gz'%(phantom) ).get_fdata().astype(np.uint8)
 
 # calculate number of compartments
 numcomp  = np.zeros( (X,Y,Z), dtype=np.uint8 )
@@ -247,34 +280,21 @@ b = np.identity( nsamples, dtype=np.float32 ) * scheme[:,3]
 # matrix with PDDs
 pdd = nib.load( '%s/pdds.nii.gz'%phantom ).get_fdata().reshape(nvoxels, 3*nbundles).astype(np.float32) # 3 dirs x bundle
 
+# DWI
+dwi_gt = np.zeros( (nsubjects, nvoxels, nsamples), dtype=np.float32 )
+dwi    = np.zeros( (nsubjects, nvoxels, nsamples), dtype=np.float32 )
+
+for batch in range(nbatches):
+    offset = batch*batch_size
+
+    print('|Batch %d/%d|' % (batch, nbatches))
+    dwi_gt[:, offset:offset+batch_size, :], dwi[:, offset:offset+batch_size, :] = generate_batch(pdd, compsize, mask, g, b, nvoxels, nsamples, offset, batch_size)
+
 for sub_id in range(nsubjects):
     subject = 'sub-%.3d_ses-1' % (sub_id+1)
 
-    print('Generating signal for subject %s/' % subject)
+    data = dwi_gt[sub_id, :, :].reshape(X,Y,Z, nsamples)
+    nib.save( nib.Nifti1Image(data, affine, header), '%s/%s/ground_truth/dwi.nii.gz'%(study,subject) )
 
-    dwi = np.zeros( (X,Y,Z, nsamples), dtype=np.float32 )
-    
-    diffs = nib.load('%s/%s/ground_truth/diffs.nii.gz'%(study,subject)).get_fdata().reshape(nvoxels, 3*nbundles).astype(np.float32) # 3 diffusivities x bundle
-
-    signal = np.zeros( (nvoxels,nsamples), dtype=np.float32 )
-    for i in selected_bundles:
-        #alpha = np.identity(nvoxels, dtype=np.float32) * compsize[:,:,:, i].flatten()
-        alpha = compsize[:,:,:, i].flatten()
-
-        print('\tBundle %d...' % (i+1))
-
-        S = get_acquisition(model, diffs[:, 3*i:3*i+3], pdd[:, 3*i:3*i+3], g, b, kappa[i])
-
-        #signal += (alpha @ S)
-        signal += (alpha*S.transpose()).transpose()
-
-        nib.save( nib.Nifti1Image(S.reshape(X,Y,Z, nsamples), affine, header), '%s/%s/ground_truth/bundle-%d__dwi.nii.gz'%(study,subject,i+1) )
-
-    dwi = signal.reshape(X,Y,Z, nsamples)
-    nib.save( nib.Nifti1Image(dwi, affine, header), '%s/%s/ground_truth/dwi.nii.gz'%(study,subject) )
-
-    if args.noise:
-        signal = add_noise(signal, SNR)
-
-    dwi = signal.reshape(X,Y,Z, nsamples)
-    nib.save( nib.Nifti1Image(dwi, affine, header), '%s/%s/dwi.nii.gz'%(study,subject) )
+    data = dwi[sub_id, :, :].reshape(X,Y,Z, nsamples)
+    nib.save( nib.Nifti1Image(data, affine, header), '%s/%s/dwi.nii.gz'%(study,subject) )
