@@ -241,9 +241,53 @@ def generate_batch(pdd, compsize, mask, g, b, nvoxels, nsamples, offset, bsize):
 
     return signal_gt, signal
 
+def generate_phantom(pdds, compsize, mask, g, b, nsubjects, nvoxels, nsamples):
+    print('|Generating Phantom|')
 
-# load WM masks
-mask_filename = '%s/wm-mask.nii.gz' % (phantom)
+    for i in range(nsubjects):
+        subject = 'sub-%.3d_ses-1' % (i+1)
+        print('├── Subject %s' % subject)
+
+        diffs = nib.load('%s/%s/ground_truth/diffs.nii.gz'%(study,subject)).get_fdata().reshape(nvoxels, 3*nbundles).astype(np.float32) # 3 diffusivities x bundle
+
+        dwi = np.zeros( (nvoxels, nsamples), dtype=np.float32 )
+
+        for bundle in selected_bundles:
+            bundle_size = compsize[:,:,:, bundle].flatten()
+            bundle_mask = mask[:,:,:, bundle].flatten()
+            bundle_signal = np.zeros( (nvoxels,nsamples), dtype=np.float32 )
+
+            print('│   ├── Bundle %d/%d     ' % (bundle+1,nbundles))
+
+            for batch in range(nbatches):
+                offset = batch*batch_size
+
+                print('│      ├── Batch %d/%d' % (batch+1,nbatches), end='\r')
+
+                batch_pdds = pdds[offset:offset+batch_size, 3*bundle:3*bundle+3]
+                batch_diffs = diffs[offset:offset+batch_size, 3*bundle:3*bundle+3]
+                batch_signal = get_acquisition(model, batch_diffs, batch_pdds, g, b, kappa[i])
+
+                bundle_signal[offset:offset+batch_size, :] = batch_signal
+            
+            bundle_signal = (bundle_signal.transpose()*bundle_mask).transpose()
+            nib.save( nib.Nifti1Image(bundle_signal.reshape(X,Y,Z,nsamples), affine, header), '%s/%s/ground_truth/bundle-%.2d__dwi.nii.gz'%(study,subject,bundle+1) )
+
+            dwi += (bundle_size*bundle_signal.transpose()).transpose()
+
+        nib.save( nib.Nifti1Image(dwi.reshape(X,Y,Z,nsamples), affine, header), '%s/%s/ground_truth/dwi.nii.gz'%(study,subject) )
+
+        if args.noise:
+            dwi = add_noise( dwi, SNR )
+
+        nib.save( nib.Nifti1Image(dwi.reshape(X,Y,Z,nsamples), affine, header), '%s/%s/dwi.nii.gz'%(study,subject) )
+
+            
+
+            
+
+# load WM masks for every bundle
+mask_filename = '%s/wm-masks.nii.gz' % (phantom)
 mask_file = nib.load( mask_filename )
 mask = mask_file.get_fdata().astype(np.uint8)
 
@@ -251,11 +295,11 @@ mask = mask_file.get_fdata().astype(np.uint8)
 header = mask_file.header
 affine = mask_file.affine
 X,Y,Z  = mask.shape[0:3] # dimensions of the phantom
+nvoxels = X*Y*Z
 
 # load protocol
 scheme = load_scheme( scheme_filename )
 nsamples = len(scheme)
-nvoxels = X*Y*Z
 
 # calculate number of compartments
 numcomp  = np.zeros( (X,Y,Z), dtype=np.uint8 )
@@ -278,8 +322,11 @@ g = scheme[:,0:3]
 b = np.identity( nsamples, dtype=np.float32 ) * scheme[:,3]
 
 # matrix with PDDs
-pdd = nib.load( '%s/pdds.nii.gz'%phantom ).get_fdata().reshape(nvoxels, 3*nbundles).astype(np.float32) # 3 dirs x bundle
+pdds = nib.load( '%s/pdds.nii.gz'%phantom ).get_fdata().reshape(nvoxels, 3*nbundles).astype(np.float32) # 3 dirs x bundle
 
+generate_phantom(pdds, compsize, mask, g, b, nsubjects, nvoxels, nsamples)
+
+"""
 # DWI
 dwi_gt = np.zeros( (nsubjects, nvoxels, nsamples), dtype=np.float32 )
 dwi    = np.zeros( (nsubjects, nvoxels, nsamples), dtype=np.float32 )
@@ -298,3 +345,4 @@ for sub_id in range(nsubjects):
 
     data = dwi[sub_id, :, :].reshape(X,Y,Z, nsamples)
     nib.save( nib.Nifti1Image(data, affine, header), '%s/%s/dwi.nii.gz'%(study,subject) )
+"""
