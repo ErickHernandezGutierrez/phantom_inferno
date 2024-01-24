@@ -1,5 +1,24 @@
 import numpy as np
-import itertools
+import nibabel as nib
+import itertools, os
+
+total_bundles = {
+    'templates/Training_3D_SF': 3,
+    'templates/Training_SF': 5,
+    'templates/Phantomas': 20
+}
+
+dims = {
+    'templates/Training_3D_SF': [16,16,5],
+    'templates/Training_SF': [16,16,5],
+    'templates/Phantomas': [50,50,50]
+}
+
+phantom_info = {
+    'templates/Training_3D_SF': {'nbundles': 3, 'dims': [16,16,5]},
+    'templates/Training_SF': {'nbundles': 5, 'dims': [16,16,5]},
+    'templates/Phantomas': {'nbundles': 20, 'dims': [50,50,50]}
+}
 
 # Load the DWI protocol
 # ------------------------------------------------------------
@@ -77,3 +96,29 @@ def success_rate(ref, mosemap):
                 success += 1
 
     return success / float(total)
+
+# Generate random diffusivities in a healthy range for every bundle and subject
+#------------------------------------------------------------
+def generate_diffs(phantom, study, affine, header, mask, nsubjects):
+    nbundles = phantom_info[phantom]['nbundles']
+    X,Y,Z = phantom_info[phantom]['dims']
+
+    d_par_ic  = np.random.uniform(low=1.8,  high=2.0, size=nsubjects*nbundles) * 1e-3
+    d_par_ec  = np.random.uniform(low=1.8,  high=2.0, size=nsubjects*nbundles) * 1e-3
+    d_perp_ec = np.random.uniform(low=0.5, high=0.6, size=nsubjects*nbundles) * 1e-3
+
+    for i in range(nsubjects):
+        subject = 'sub-%.3d_ses-1' % (i+1)
+        diffs = np.zeros((X,Y,Z, 3*nbundles), dtype=np.float32)
+
+        for bundle in range(nbundles):
+            diffs[:,:,:, 3*bundle]   = np.repeat( d_par_ic[i*nbundles + bundle], X*Y*Z ).reshape(X,Y,Z)  * mask[:,:,:, bundle]
+            diffs[:,:,:, 3*bundle+1] = np.repeat( d_par_ec[i*nbundles + bundle], X*Y*Z ).reshape(X,Y,Z)  * mask[:,:,:, bundle]
+            diffs[:,:,:, 3*bundle+2] = np.repeat( d_perp_ec[i*nbundles + bundle], X*Y*Z ).reshape(X,Y,Z) * mask[:,:,:, bundle]
+
+        # create subject folders
+        if not os.path.exists( '%s/%s' % (study,subject) ):
+            os.system( 'mkdir %s/%s' % (study,subject) )
+        if not os.path.exists( '%s/%s/ground_truth' % (study,subject) ):
+            os.system( 'mkdir %s/%s/ground_truth' % (study,subject) )
+        nib.save( nib.Nifti1Image(diffs, affine, header), '%s/%s/ground_truth/diffs.nii.gz' % (study,subject) ) 

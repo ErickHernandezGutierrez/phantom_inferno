@@ -14,15 +14,15 @@ parser.add_argument('scheme', help='protocol file in format Nx4 text file with [
 parser.add_argument('--size_ic',  type=float, default=0.7,  help='size of the intra-cellular compartment. required only for noddi')
 parser.add_argument('--size_ec',  type=float, default=0.25, help='size of the extra-cellular compartment. required only for noddi')
 parser.add_argument('--size_iso', type=float, default=0.05, help='size of the isotropic compartment. required only for noddi')
+parser.add_argument('--select_bundles', type=int, nargs='*', help='list of the bundles to be included in the phantom. default: all')
 
 parser.add_argument('--snr',        default=30,   type=int, help='signal to noise ratio. default: 30')
 parser.add_argument('--nsubjects',  default=1,    type=int, help='number of subjects in the study. default: 1')
 parser.add_argument('--ndirs',      default=5000, type=int, help='number of dispersion directions. default: 5000')
 parser.add_argument('--vsize',      default=1,    type=int, help='voxel size in mm. default: 1')
-parser.add_argument('--batch_size', default=1000, type=int, help='Number of voxels in every batch')
-parser.add_argument('--nbatches',   default=125,  type=int, help='Total number of batches')
-parser.add_argument('--kappa',     default=[24],  type=int, nargs='*', help='kappa dispersion value per bundle. default: 24')
-parser.add_argument('--select_bundles', type=int, nargs='*', help='list of the bundles to be included in the phantom. default: all')
+parser.add_argument('--batch_size', default=1000, type=int, help='Number of voxels in every batch. default: 1000')
+parser.add_argument('--nbatches',   default=125,  type=int, help='Number of batches. default: 125')
+parser.add_argument('--kappa',      default=[24], type=int, nargs='*', help='kappa dispersion value per bundle. default: 24')
 parser.add_argument('-dispersion', help='add dispersion to the signal', action='store_true')
 parser.add_argument('-noise', help='add noise to the signal', action='store_true')
 
@@ -78,6 +78,7 @@ kappa: float
 """
 def get_dispersion(pdd, ndirs, kappa):
     nvoxels = pdd.shape[0]
+    print(nvoxels)
 
     dirs = load_dispersion_dirs(ndirs)
 
@@ -309,7 +310,7 @@ nib.save( nib.Nifti1Image(numcomp, affine, header), '%s/numcomp.nii.gz'%(study) 
 
 # calculate compartment size
 compsize = np.zeros( (X,Y,Z, nbundles), dtype=np.float32 )
-for (x,y,z) in itertools.product( range(X), range(Y), range(Z) ):
+for (x,y,z) in itertools.product( range(X),range(Y),range(Z) ):
     if numcomp[x,y,z] > 0:
         for i in selected_bundles:
             compsize[x,y,z, i] = mask[x,y,z, i] / float(numcomp[x,y,z])
@@ -324,25 +325,7 @@ b = np.identity( nsamples, dtype=np.float32 ) * scheme[:,3]
 # matrix with PDDs
 pdds = nib.load( '%s/pdds.nii.gz'%phantom ).get_fdata().reshape(nvoxels, 3*nbundles).astype(np.float32) # 3 dirs x bundle
 
+generate_diffs(phantom, study, affine, header,  mask, nsubjects)
+
 generate_phantom(pdds, compsize, mask, g, b, nsubjects, nvoxels, nsamples)
 
-"""
-# DWI
-dwi_gt = np.zeros( (nsubjects, nvoxels, nsamples), dtype=np.float32 )
-dwi    = np.zeros( (nsubjects, nvoxels, nsamples), dtype=np.float32 )
-
-for batch in range(nbatches):
-    offset = batch*batch_size
-
-    print('|Batch %d/%d|' % (batch, nbatches))
-    dwi_gt[:, offset:offset+batch_size, :], dwi[:, offset:offset+batch_size, :] = generate_batch(pdd, compsize, mask, g, b, nvoxels, nsamples, offset, batch_size)
-
-for sub_id in range(nsubjects):
-    subject = 'sub-%.3d_ses-1' % (sub_id+1)
-
-    data = dwi_gt[sub_id, :, :].reshape(X,Y,Z, nsamples)
-    nib.save( nib.Nifti1Image(data, affine, header), '%s/%s/ground_truth/dwi.nii.gz'%(study,subject) )
-
-    data = dwi[sub_id, :, :].reshape(X,Y,Z, nsamples)
-    nib.save( nib.Nifti1Image(data, affine, header), '%s/%s/dwi.nii.gz'%(study,subject) )
-"""
