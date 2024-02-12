@@ -59,3 +59,25 @@ for i in range(nsubjects):
         os.system('python scripts/mrds2metrics.py %s/%s/mrds --prefix results --method Diff --modsel %s --mask %s' % (study,subject,modsel.upper(),mask))
     else:
         os.system('python scripts/mrds2metrics.py %s/%s/mrds --prefix results --method Diff --modsel %s' % (study,subject,modsel.upper()))
+
+    # create tractometry input folders
+    input_tractometry = '%s/input_tractometry' % (study)
+    if not os.path.exists( input_tractometry ):
+        os.system('mkdir %s' % (input_tractometry))
+    if not os.path.exists( '%s/%s' % (input_tractometry,subject) ):
+        os.system('mkdir %s/%s' % (input_tractometry,subject))
+    if not os.path.exists( '%s/%s/metrics' % (input_tractometry,subject) ):
+        os.system('mkdir %s/%s/metrics' % (input_tractometry,subject))
+    if not os.path.exists( '%s/%s/fixel_metrics' % (input_tractometry,subject) ):
+        os.system('mkdir %s/%s/fixel_metrics' % (input_tractometry,subject))
+
+    # copy data to input tractometry folders
+    os.system('cp %s/%s/dti/results_DTInolin_FA.nii.gz %s/metrics/fa.nii.gz' % (study,subject,input_tractometry))
+    os.system('cp %s/%s/dti/results_DTInolin_MD.nii.gz %s/metrics/md.nii.gz' % (study,subject,input_tractometry))
+    os.system('cp %s/%s/dti/results_DTInolin_RD.nii.gz %s/metrics/rd.nii.gz' % (study,subject,input_tractometry))
+    os.system('cp %s/%s/dti/results_DTInolin_AD.nii.gz %s/metrics/ad.nii.gz' % (study,subject,input_tractometry))
+    os.system('cp %s/%s/mrds/results_MRDS_Diff_%s_FA.nii.gz %s/fixel_metrics/fixel_fa.nii.gz' % (study,subject,modsel.upper(),input_tractometry))
+    os.system('cp %s/%s/mrds/results_MRDS_Diff_%s_MD.nii.gz %s/fixel_metrics/fixel_md.nii.gz' % (study,subject,modsel.upper(),input_tractometry))
+    os.system('cp %s/%s/mrds/results_MRDS_Diff_%s_RD.nii.gz %s/fixel_metrics/fixel_rd.nii.gz' % (study,subject,modsel.upper(),input_tractometry))
+    os.system('cp %s/%s/mrds/results_MRDS_Diff_%s_AD.nii.gz %s/fixel_metrics/fixel_ad.nii.gz' % (study,subject,modsel.upper(),input_tractometry))
+    os.system('cp %s/%s/mrds/results_MRDS_Diff_%s_PDDs_CARTESIAN.nii.gz %s/pdds.nii.gz' % (study,subject,modsel.upper(),input_tractometry))
