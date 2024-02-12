@@ -10,6 +10,16 @@ phantom_info = {
     'templates/Phantomas': {'nbundles': 20, 'dims': [50,50,50]}
 }
 
+def lambdas2fa(lambdas):
+    a = np.sqrt(0.5)
+    b = np.sqrt( (lambdas[0]-lambdas[1])**2 + (lambdas[1]-lambdas[2])**2 + (lambdas[2]-lambdas[0])**2 )
+    c = np.sqrt( lambdas[0]**2 + lambdas[1]**2 + lambdas[2]**2 )
+
+    return a*b/c
+
+def lambdas2md(lambdas):
+    return ( lambdas[0]+lambdas[1]+lambdas[2] )/3
+
 # Load the DWI protocol
 # ------------------------------------------------------------
 # It has to be in the format

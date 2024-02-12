@@ -56,6 +56,6 @@ for i in range(nsubjects):
 
     print('│   ├── Extracting MRDS Metrics')
     if args.mask:
-        os.system('python mrds2metrics.py %s/%s/mrds --prefix results --method Diff --modsel %s --mask %s' % (study,subject,modsel.upper(),mask))
+        os.system('python scripts/mrds2metrics.py %s/%s/mrds --prefix results --method Diff --modsel %s --mask %s' % (study,subject,modsel.upper(),mask))
     else:
-        os.system('python mrds2metrics.py %s/%s/mrds --prefix results --method Diff --modsel %s' % (study,subject,modsel.upper()))
+        os.system('python scripts/mrds2metrics.py %s/%s/mrds --prefix results --method Diff --modsel %s' % (study,subject,modsel.upper()))
