@@ -10,18 +10,15 @@ parser.add_argument('model', default='noddi', help="model for the phantom {multi
 parser.add_argument('study_path', help='path to the study folder')
 parser.add_argument('scheme', help='protocol file in format Nx4 text file with [X Y Z b] at each row')
 
-parser.add_argument('--size_ic',  type=float, default=0.60,  help='size of the intra-cellular compartment. required only for noddi')
-parser.add_argument('--size_ec',  type=float, default=0.35, help='size of the extra-cellular compartment. required only for noddi')
-parser.add_argument('--size_iso', type=float, default=0.05, help='size of the isotropic compartment. required only for noddi')
+parser.add_argument('--size_ic',  type=float, default=0.60, help='size of the intra-cellular compartment. default: 0.60')
+parser.add_argument('--size_ec',  type=float, default=0.35, help='size of the extra-cellular compartment. default: 0.35')
+parser.add_argument('--size_iso', type=float, default=0.05, help='size of the isotropic compartment. default: 0.05')
 parser.add_argument('--select_bundles', type=int, nargs='*', help='list of the bundles to be included in the phantom. default: all')
 
 parser.add_argument('--snr',        default=20,   type=int, help='signal to noise ratio. default: 20')
 parser.add_argument('--nsubjects',  default=1,    type=int, help='number of subjects in the study. default: 1')
 parser.add_argument('--ndirs',      default=5000, type=int, help='number of dispersion directions. default: 5000')
-parser.add_argument('--vsize',      default=1,    type=int, help='voxel size in mm. default: 1')
-parser.add_argument('--batch_size', default=1000, type=int, help='Number of voxels in every batch. default: 1000')
 parser.add_argument('--nbatches',   default=125,  type=int, help='Number of batches. default: 125')
-parser.add_argument('--kappa',      default=[24], type=int, nargs='*', help='kappa dispersion value per bundle. default: 24')
 parser.add_argument('-dispersion', help='add dispersion to the signal', action='store_true')
 parser.add_argument('-noise', help='add noise to the signal', action='store_true')
 parser.add_argument('-show_dispersion', help='show dispersion directions', action='store_true')
@@ -38,17 +35,13 @@ if args.snr:
     SNR = args.snr
 nsubjects = args.nsubjects
 ndirs = args.ndirs
-vsize = args.vsize
 nbatches = args.nbatches
-batch_size = args.batch_size
 
 nbundles = phantom_info[phantom]['nbundles']
+X,Y,Z = phantom_info[phantom]['dims']
+nvoxels = X*Y*Z
+batch_size = int(nvoxels/nbatches)
 
-"""
-kappa = args.kappa
-if len(kappa) != nbundles:
-    kappa = [kappa[0]] * nbundles
-"""
 kappa = np.random.normal(loc=21, scale=1.0, size=nbundles)
 
 if args.select_bundles:
@@ -119,8 +112,6 @@ mask = mask_file.get_fdata().astype(np.uint8)
 # load phantom header
 header = mask_file.header
 affine = mask_file.affine
-X,Y,Z  = mask.shape[0:3] # dimensions of the phantom
-nvoxels = X*Y*Z
 
 # load protocol
 scheme = load_scheme( scheme_filename )
@@ -159,3 +150,4 @@ generate_diffs(phantom, study, affine, header, mask, nsubjects)
 
 generate_phantom(pdds, compsize, mask, g, b, nsubjects, nvoxels, nsamples)
 
+# TODO: Create a phantominfo file
