@@ -290,8 +290,8 @@ def generate_diffs(phantom, study, affine, header, mask, nsubjects):
     nbundles = phantom_info[phantom]['nbundles']
     X,Y,Z = phantom_info[phantom]['dims']
 
-    d_par_ic  = np.random.normal(loc=1.5, scale=0.01, size=nsubjects*nbundles) * 1e-3
-    d_par_ec  = np.random.normal(loc=1.5, scale=0.01, size=nsubjects*nbundles) * 1e-3
+    d_par_ic  = np.random.normal(loc=2.0, scale=0.01, size=nsubjects*nbundles) * 1e-3
+    d_par_ec  = np.random.normal(loc=2.0, scale=0.01, size=nsubjects*nbundles) * 1e-3
     d_perp_ec = np.random.normal(loc=0.6, scale=0.01, size=nsubjects*nbundles) * 1e-3
 
     for i in range(nsubjects):
@@ -304,20 +304,20 @@ def generate_diffs(phantom, study, affine, header, mask, nsubjects):
             diffs[:,:,:, 3*bundle+2] = np.repeat( d_perp_ec[i*nbundles + bundle], X*Y*Z ).reshape(X,Y,Z) * mask[:,:,:, bundle]
 
         # create subject folders
-        if not os.path.exists( '%s/%s' % (study,subject) ):
-            os.system( 'mkdir %s/%s' % (study,subject) )
-        if not os.path.exists( '%s/ground_truth/%s' % (study,subject) ):
-            os.system( 'mkdir %s/ground_truth/%s' % (study,subject) )
+        if not os.path.exists( '%s/%s'%(study,subject) ):
+            os.system( 'mkdir %s/%s'%(study,subject) )
+        if not os.path.exists( '%s/ground_truth/%s'%(study,subject) ):
+            os.system( 'mkdir %s/ground_truth/%s'%(study,subject) )
 
-        nib.save( nib.Nifti1Image(diffs, affine, header), '%s/ground_truth/%s/diffs.nii.gz' % (study,subject) ) 
+        nib.save( nib.Nifti1Image(diffs,affine,header), '%s/ground_truth/%s/diffs.nii.gz'%(study,subject) ) 
 
 # Plot distribution for the diffusivities
 #------------------------------------------------------------
 def plot_diff_distribution():
-    d_par_ic  = np.random.normal(loc=1.5, scale=0.01, size=1000)
-    d_par_ec  = np.random.normal(loc=1.5, scale=0.01, size=1000)
-    d_perp_ec = np.random.normal(loc=0.6, scale=0.03, size=1000)
-    kappa     = np.random.normal(loc=21,  scale=1.0,  size=1000)
+    d_par_ic  = np.random.normal(loc=2.0, scale=0.01, size=1000)
+    d_par_ec  = np.random.normal(loc=2.0, scale=0.01, size=1000)
+    d_perp_ec = np.random.normal(loc=0.6, scale=0.01, size=1000)
+    kappa     = np.random.normal(loc=20,  scale=1.0,  size=1000)
 
     font = {'size' : 20}
     matplotlib.rc('font', **font)

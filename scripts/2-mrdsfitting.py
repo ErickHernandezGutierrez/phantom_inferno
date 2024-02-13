@@ -24,6 +24,8 @@ def read_lambdas(lambdas_filename):
                #lambda1    #lambda23 
         return lambdas[0], (lambdas[1]+lambdas[2])/2.0
 
+print('\n│Pipeline - Step 2 (DTI & MRDS Fitting)│')
+
 for i in range(nsubjects):
     subject = 'sub-%.3d_ses-1' % (i+1)
     print('├── Subject %s' % subject)

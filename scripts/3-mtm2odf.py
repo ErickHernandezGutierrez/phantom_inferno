@@ -15,6 +15,8 @@ modsel = args.modsel
 mask = args.mask
 nsubjects = args.nsubjects
 
+print('\n│Pipeline - Step 3 (Multi-Tensors to ODFs)│')
+
 for i in range(nsubjects):
     subject = 'sub-%.3d_ses-1' % (i+1)
     print('├── Subject %s' % subject)

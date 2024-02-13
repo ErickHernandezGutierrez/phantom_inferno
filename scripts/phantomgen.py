@@ -42,7 +42,7 @@ X,Y,Z = phantom_info[phantom]['dims']
 nvoxels = X*Y*Z
 batch_size = int(nvoxels/nbatches)
 
-kappa = np.random.normal(loc=21, scale=1.0, size=nbundles)
+kappa = np.random.normal(loc=20, scale=1.0, size=nbundles)
 
 if args.select_bundles:
     selected_bundles = args.select_bundles

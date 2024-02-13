@@ -19,7 +19,7 @@ nsubjects = args.nsubjects
 ntracks = args.ntracks
 roi = args.roi
 
-print('\n│Pipeline - Step 4 (Fiber Tracking & Tractogram Segmentation)│')
+print('│Pipeline - Step 4 (Fiber Tracking & Tractogram Segmentation)│')
 
 for i in range(nsubjects):
     subject = 'sub-%.3d_ses-1' % (i+1)
@@ -43,7 +43,7 @@ for i in range(nsubjects):
     os.system('for roi in 1 3 5 7 9 11 13 15 17 19 21 23 25 27 29 31 33 35 37 39; do \
                     cp %s/%s/mrds/results_MRDS_Diff_%s_BUNDLES/bundle$roi-$(($roi+1)).tck %s/bundles/bundle-$(((($roi+1))/2)).tck; \
                done'%(study,subject,modsel.upper(),input_tractometry))
-    os.system('for j in {1..20}; do \
+    os.system('for j in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do \
                     python scripts/convert_tractogram.py %s/bundles/bundle-${j}.tck %s/bundles/bundle-${j}.trk --reference %s/%s/dwi.nii.gz; \
                done'%(input_tractometry,input_tractometry,study,subject))
     os.system('rm %s/bundles/bundle*.tck'%(input_tractometry))
