@@ -4,11 +4,17 @@ import matplotlib.pyplot as plt
 import itertools, matplotlib, os
 from scipy.special import hyp1f1 as M
 
+# TODO: Add FiberCup phantom
 phantom_info = {
     'templates/Training_3D_SF': {'nbundles': 3, 'dims': [16,16,5]},
     'templates/Training_SF': {'nbundles': 5, 'dims': [16,16,5]},
     'templates/Phantomas': {'nbundles': 20, 'dims': [50,50,50]}
 }
+
+mean_d_par_ic = 2.0
+mean_d_par_ec = 2.0
+mean_d_perp_ec = 1.0
+mean_kappa = 20
 
 def lambdas2fa(lambdas):
     a = np.sqrt(0.5)
@@ -290,9 +296,9 @@ def generate_diffs(phantom, study, affine, header, mask, nsubjects):
     nbundles = phantom_info[phantom]['nbundles']
     X,Y,Z = phantom_info[phantom]['dims']
 
-    d_par_ic  = np.random.normal(loc=2.0, scale=0.01, size=nsubjects*nbundles) * 1e-3
-    d_par_ec  = np.random.normal(loc=2.0, scale=0.01, size=nsubjects*nbundles) * 1e-3
-    d_perp_ec = np.random.normal(loc=0.6, scale=0.01, size=nsubjects*nbundles) * 1e-3
+    d_par_ic  = np.random.normal(loc=mean_d_par_ic,  scale=0.01, size=nsubjects*nbundles) * 1e-3
+    d_par_ec  = np.random.normal(loc=mean_d_par_ec,  scale=0.01, size=nsubjects*nbundles) * 1e-3
+    d_perp_ec = np.random.normal(loc=mean_d_perp_ec, scale=0.01, size=nsubjects*nbundles) * 1e-3
 
     for i in range(nsubjects):
         subject = 'sub-%.3d_ses-1' % (i+1)
@@ -314,24 +320,45 @@ def generate_diffs(phantom, study, affine, header, mask, nsubjects):
 # Plot distribution for the diffusivities
 #------------------------------------------------------------
 def plot_diff_distribution():
-    d_par_ic  = np.random.normal(loc=2.0, scale=0.01, size=1000)
-    d_par_ec  = np.random.normal(loc=2.0, scale=0.01, size=1000)
-    d_perp_ec = np.random.normal(loc=0.6, scale=0.01, size=1000)
-    kappa     = np.random.normal(loc=20,  scale=1.0,  size=1000)
+    d_par_ic  = np.random.normal(loc=mean_d_par_ic,  scale=0.01, size=1000)
+    d_par_ec  = np.random.normal(loc=mean_d_par_ec,  scale=0.01, size=1000)
+    d_perp_ec = np.random.normal(loc=mean_d_perp_ec, scale=0.01, size=1000)
+    kappa     = np.random.normal(loc=mean_kappa,     scale=1.0,  size=1000)
 
     font = {'size' : 20}
     matplotlib.rc('font', **font)
+    #matplotlib.rcParams['text.color'] = 'white'
+    #matplotlib.rcParams['axes.labelcolor'] = 'white'
+    #matplotlib.rcParams['xtick.color'] = 'white'
+    #matplotlib.rcParams['ytick.color'] = 'white'
     fig, ax = plt.subplots(nrows=2, ncols=2, figsize=(16,9))
 
-    ax[0,0].hist(d_par_ic,  bins=32, edgecolor='black', color='red')
-    ax[0,1].hist(d_par_ec,  bins=32, edgecolor='black', color='green')
-    ax[1,0].hist(d_perp_ec, bins=32, edgecolor='black', color='green')
-    ax[1,1].hist(kappa,     bins=32, edgecolor='black', color='blue')
+    #fig.set_facecolor('#212946')
 
-    ax[0,0].set_xlabel(r'$D_{ic}^{\parallel}$')
-    ax[0,1].set_xlabel(r'$D_{ec}^{\parallel}$')
-    ax[1,0].set_xlabel(r'$D_{ec}^{\perp}$')
-    ax[1,1].set_xlabel(r'$Dispersion \; \kappa$')
+    ax[0,0].set_xlabel(r'$D_{ic}^{\parallel}\;[\mu m^2/ms]$')
+    ax[0,1].set_xlabel(r'$D_{ec}^{\parallel}\;[\mu m^2/ms]$')
+    ax[1,0].set_xlabel(r'$D_{ec}^{\perp}\;[\mu m^2/ms]$')
+    ax[1,1].set_xlabel(r'$Dispersion\;\kappa$')
+
+    ax[0,0].set_facecolor('#EAEAF2')#('#212946')
+    ax[0,1].set_facecolor('#EAEAF2')#('#212946')
+    ax[1,0].set_facecolor('#EAEAF2')#('#212946')
+    ax[1,1].set_facecolor('#EAEAF2')#('#212946')
+
+    ax[0,0].set_axisbelow(True)
+    ax[0,1].set_axisbelow(True)
+    ax[1,0].set_axisbelow(True)
+    ax[1,1].set_axisbelow(True)
+
+    ax[0,0].grid(True, linewidth=2, color='black')
+    ax[0,1].grid(True, linewidth=2, color='black')
+    ax[1,0].grid(True, linewidth=2, color='black')
+    ax[1,1].grid(True, linewidth=2, color='black')
+
+    ax[0,0].hist(d_par_ic,  bins=64, color='#5A5B9F')
+    ax[0,1].hist(d_par_ec,  bins=64, color='#009473')
+    ax[1,0].hist(d_perp_ec, bins=64, color='#FF6F61')
+    ax[1,1].hist(kappa,     bins=64, color='#F0C05A')
 
     plt.show()
 
@@ -351,3 +378,41 @@ def plot_dispersion_dirs(ndirs):
     # TODO: add subplot with the dispersion ODF
 
     plt.show()
+
+# Save phantom info
+#------------------------------------------------------------
+def save_phantom_info(args, scheme, kappas, nbundles):
+    X,Y,Z = phantom_info[args.template]['dims']
+    nsamples = len(scheme)
+
+    bvals = {}
+    for (x,y,z,b) in scheme:
+        bval = int(b)
+
+        if bval in bvals:
+            bvals[bval] += 1
+        else:
+            bvals[bval] = 0
+
+    kappas_str = ''
+    for kappa in kappas:
+        kappas_str += '%d ' % kappa
+
+    with open(args.study_path+'/INFO.txt', 'w') as file:
+        file.write('│Study: %s│\n' % args.template)
+        file.write('├── Template: %s\n' % (args.template))
+        file.write('├── Dimensions: %d x %d x %d x %d\n' % (X,Y,Z,nsamples))
+        file.write('├── Voxel Size: 1 x 1 x 1 x 1\n') #TODO: make this variable
+        file.write('├── Model: %s\n' % (args.model))
+        file.write('├── SNR: %d\n' % (args.snr))
+        file.write('├── Num. Dispersion Directions: %d\n' % (args.ndirs))
+        file.write('├── Num. Subjects: %d\n' % (args.nsubjects))
+        file.write('├── Num. Bundles: %d\n' % (nbundles))
+        file.write('├── Compartment Size (IC, EC, ISO): (%.2f,%.2f,%.2f)\n' % (args.size_ic,args.size_ec,args.size_iso))
+        file.write('├── Dispersion: %s\n' % (args.dispersion))
+        file.write('│   ├── Num. Directions: %d\n' % (args.ndirs))
+        file.write('│   └── Bundle Kappas: %s\n' % (kappas_str))
+        file.write('├── Protocol: %s\n' % (args.scheme))
+        file.write('│   ├── Num. b-vals: %d\n' % (len(bvals)))
+        for key in bvals:
+            file.write('│   ├── b-val %d: %d directions\n' % (key, bvals[key]))

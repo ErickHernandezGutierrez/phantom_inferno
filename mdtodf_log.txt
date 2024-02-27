@@ -1,4 +1,4 @@
-eig_flag: 1 optarg: experiments/test/sub-001_ses-1/mrds/results_MRDS_Diff_BIC_EIGENVALUES.nii.gz
-mask_flag: 1 optarg: templates/Phantomas/wm-mask.nii.gz
+eig_flag: 1 optarg: experiments/control/sub-003_ses-1/mrds/results_MRDS_Diff_BIC_EIGENVALUES.nii.gz
+mask_flag: 1 optarg: templates/Training_3D_SF/wm-mask.nii.gz
 
 

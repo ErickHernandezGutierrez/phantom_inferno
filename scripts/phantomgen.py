@@ -5,13 +5,14 @@ from random import random
 from utils import *
 
 parser = argparse.ArgumentParser(description='Generate phantom signal.')
-parser.add_argument('phantom', help='path to the phantom template')
-parser.add_argument('model', default='noddi', help="model for the phantom {multi-tensor,noddi}. default: noddi")
 parser.add_argument('study_path', help='path to the study folder')
 parser.add_argument('scheme', help='protocol file in format Nx4 text file with [X Y Z b] at each row')
 
-parser.add_argument('--size_ic',  type=float, default=0.60, help='size of the intra-cellular compartment. default: 0.60')
-parser.add_argument('--size_ec',  type=float, default=0.35, help='size of the extra-cellular compartment. default: 0.35')
+parser.add_argument('--template', default='templates/Phantomas', help='path to the phantom structure template. default: templates/Phantomas')
+parser.add_argument('--model', default='noddi', help="model for the phantom {multi-tensor,noddi}. default: noddi")
+
+parser.add_argument('--size_ic',  type=float, default=0.55, help='size of the intra-cellular compartment. default: 0.60')
+parser.add_argument('--size_ec',  type=float, default=0.40, help='size of the extra-cellular compartment. default: 0.35')
 parser.add_argument('--size_iso', type=float, default=0.05, help='size of the isotropic compartment. default: 0.05')
 parser.add_argument('--select_bundles', type=int, nargs='*', help='list of the bundles to be included in the phantom. default: all')
 
@@ -19,14 +20,14 @@ parser.add_argument('--snr',        default=20,   type=int, help='signal to nois
 parser.add_argument('--nsubjects',  default=1,    type=int, help='number of subjects in the study. default: 1')
 parser.add_argument('--ndirs',      default=5000, type=int, help='number of dispersion directions. default: 5000')
 parser.add_argument('--nbatches',   default=125,  type=int, help='Number of batches. default: 125')
-parser.add_argument('-dispersion', help='add dispersion to the signal', action='store_true')
 parser.add_argument('-noise', help='add noise to the signal', action='store_true')
+parser.add_argument('-dispersion', help='add dispersion to the signal', action='store_true')
 parser.add_argument('-show_dispersion', help='show dispersion directions', action='store_true')
 parser.add_argument('-show_distribution', help='show distribution of the diffusivities', action='store_true')
 
 args = parser.parse_args()
 
-phantom = args.phantom
+phantom = args.template
 model = args.model
 study = args.study_path
 scheme_filename = args.scheme
@@ -105,11 +106,19 @@ def generate_phantom(pdds, compsize, mask, g, b, nsubjects, nvoxels, nsamples):
         nib.save( nib.Nifti1Image(dwi.reshape(X,Y,Z,nsamples), affine, header), '%s/%s/dwi.nii.gz'%(study,subject) )
 
 # load WM masks for every bundle
-mask_filename = '%s/wm-masks.nii.gz' % (phantom)
-mask_file = nib.load( mask_filename )
-mask = mask_file.get_fdata().astype(np.uint8)
+mask = np.zeros( (X,Y,Z,nbundles),dtype=np.uint8 )
+for bundle in range(nbundles):
+    mask_filename = '%s/bundle-%d__wm-mask.nii.gz' % (phantom,bundle+1)
+    mask[:,:,:, bundle] = nib.load( mask_filename ).get_fdata().astype(np.uint8)
 
-# load phantom header
+# load PDDs for each bundle
+pdds = np.zeros( (X,Y,Z,3*nbundles),dtype=np.float32 )
+for bundle in range(nbundles):
+    pdds_filename = '%s/bundle-%d__pdds.nii.gz' % (phantom,bundle+1)
+    pdds[:,:,:, 3*bundle:3*(bundle+1)] = nib.load( pdds_filename ).get_fdata().astype(np.float32)
+
+# load phantom wm-mask, affine and header
+mask_file = nib.load('%s/wm-mask.nii.gz' % (phantom))
 header = mask_file.header
 affine = mask_file.affine
 
@@ -144,10 +153,10 @@ g = scheme[:,0:3]
 b = np.identity( nsamples,dtype=np.float32 ) * scheme[:,3]
 
 # matrix with PDDs
-pdds = nib.load( '%s/pdds.nii.gz'%phantom ).get_fdata().reshape(nvoxels, 3*nbundles).astype(np.float32) # 3 dirs x bundle
+pdds = pdds.reshape(nvoxels, 3*nbundles)
 
 generate_diffs(phantom, study, affine, header, mask, nsubjects)
 
 generate_phantom(pdds, compsize, mask, g, b, nsubjects, nvoxels, nsamples)
 
-# TODO: Create a phantominfo file
+save_phantom_info(args, scheme, kappa, nselected)
