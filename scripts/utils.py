@@ -399,10 +399,10 @@ def save_phantom_info(args, scheme, kappas, nbundles):
         kappas_str += '%d ' % kappa
 
     with open(args.study_path+'/INFO.txt', 'w') as file:
-        file.write('│Study: %s│\n' % args.template)
+        file.write('│Study: %s│\n' % args.study)
         file.write('├── Template: %s\n' % (args.template))
         file.write('├── Dimensions: %d x %d x %d x %d\n' % (X,Y,Z,nsamples))
-        file.write('├── Voxel Size: 1 x 1 x 1 x 1\n') #TODO: make this variable
+        file.write('├── Voxel Size: 1 x 1 x 1 x 1 mm\n') #TODO: make this variable
         file.write('├── Model: %s\n' % (args.model))
         file.write('├── SNR: %d\n' % (args.snr))
         file.write('├── Num. Dispersion Directions: %d\n' % (args.ndirs))

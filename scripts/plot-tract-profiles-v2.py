@@ -9,7 +9,6 @@ parser.add_argument('input_path', help='input path with the results of the tract
 parser.add_argument('subject', help='subject')
 parser.add_argument('output_path', help='path to save the output plots')
 parser.add_argument('--ground_truth', help='path to the ground truth')
-
 args = parser.parse_args()
 
 results_tractometry = args.input_path
