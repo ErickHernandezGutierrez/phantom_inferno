@@ -11,10 +11,17 @@ phantom_info = {
     'templates/Phantomas': {'nbundles': 20, 'dims': [50,50,50]}
 }
 
+# TODO: make this variable
 mean_d_par_ic = 2.0
 mean_d_par_ec = 2.0
 mean_d_perp_ec = 1.0
 mean_kappa = 20
+d_iso = 3.0
+"""
+size_ic  = 0.55
+size_ec  = 0.40
+size_iso = 0.05
+"""
 
 def lambdas2fa(lambdas):
     a = np.sqrt(0.5)
@@ -222,43 +229,9 @@ def get_acquisition(model, diff, pdd, g, b, kappa, ndirs, size_ic, size_ec, size
             signal_out =  size_ic * stick_signal(pdd, d_par_ic, g, b)
             signal_out += size_ec * tensor_signal(pdd, d_par_ec, d_perp_ec, g, b)
 
-        signal_out += size_iso * np.exp( (-0.3e-3*np.ones((nvoxels,nsamples), dtype=np.float32)) @ b )
+        signal_out += size_iso * np.exp( (-d_iso*1e-3*np.ones((nvoxels,nsamples), dtype=np.float32)) @ b )
 
         return signal_out
-
-# TODO: delete this function
-# Generate the dMRI signal of a batch of voxels
-# ------------------------------------------------------------
-def generate_batch(pdd, compsize, mask, g, b, nvoxels, nsamples, offset, bsize, study, selected_bundles, nbundles, nsubjects, kappa, model, SNR, noise):
-    pdd = pdd[offset:offset+bsize, :]
-
-    signal_gt = np.zeros( (nsubjects,bsize,nsamples), dtype=np.float32 )
-    signal    = np.zeros( (nsubjects,bsize,nsamples), dtype=np.float32 )
-
-    for sub_id in range(nsubjects):
-        subject = 'sub-%.3d_ses-1' % (sub_id+1)
-
-        print('├── Subject %s' % subject)
-        
-        diffs = nib.load('%s/%s/ground_truth/diffs.nii.gz'%(study,subject)).get_fdata().reshape(nvoxels, 3*nbundles).astype(np.float32) # 3 diffusivities x bundle
-        diffs = diffs[offset:offset+bsize, :]
-
-        for i in selected_bundles:
-            alpha = compsize[:,:,:, i].flatten()
-            alpha = alpha[offset:offset+bsize]
-
-            print('│   ├── Bundle %d...' % (i+1))
-
-            S = get_acquisition(model, diffs[:, 3*i:3*i+3], pdd[:, 3*i:3*i+3], g, b, kappa[i])
-
-            signal_gt[sub_id, :, :] += (alpha*S.transpose()).transpose()
-
-        if noise:
-            signal[sub_id,:,:] = add_noise( signal_gt[sub_id,:,:], SNR)
-        else:
-            signal[sub_id,:,:] = signal_gt[sub_id,:,:]
-
-    return signal_gt, signal
 
 # Add Rician noise to the signal
 #   signal: matrix (nvoxels,nsamples)
@@ -303,6 +276,7 @@ def generate_diffs(phantom, study, affine, header, mask, nsubjects):
     for i in range(nsubjects):
         subject = 'sub-%.3d_ses-1' % (i+1)
         diffs = np.zeros((X,Y,Z, 3*nbundles), dtype=np.float32)
+        #diffs_lesion = np.zeros((X,Y,Z, 3*nbundles), dtype=np.float32)
 
         for bundle in range(nbundles):
             diffs[:,:,:, 3*bundle]   = np.repeat( d_par_ic[i*nbundles + bundle], X*Y*Z ).reshape(X,Y,Z)  * mask[:,:,:, bundle]
@@ -316,6 +290,35 @@ def generate_diffs(phantom, study, affine, header, mask, nsubjects):
             os.system( 'mkdir %s/ground_truth/%s'%(study,subject) )
 
         nib.save( nib.Nifti1Image(diffs,affine,header), '%s/ground_truth/%s/diffs.nii.gz'%(study,subject) ) 
+
+def generate_fracs(phantom, study, affine, header, mask, bundles, nsubjects):
+    nbundles = phantom_info[phantom]['nbundles']
+    X,Y,Z = phantom_info[phantom]['dims']
+
+    for i in range(nsubjects):
+        subject = 'sub-%.3d_ses-1' % (i+1)
+        fracs = np.zeros((X,Y,Z, 3*nbundles), dtype=np.float32)
+
+        for bundle in bundles:
+            fracs[:,:,:, 3*bundle]   = mask[:,:,:, bundle] * size_ic
+            fracs[:,:,:, 3*bundle+1] = mask[:,:,:, bundle] * size_ec
+            fracs[:,:,:, 3*bundle+2] = mask[:,:,:, bundle] * size_iso
+
+        """
+        for bundle in lesion_bundles:
+            fracs[:,:,:, 3*bundle]   = lesion_mask[:,:,:, bundle] * 0.50 # IC
+            fracs[:,:,:, 3*bundle+1] = lesion_mask[:,:,:, bundle] * 0.35 # EC
+            fracs[:,:,:, 3*bundle+2] = lesion_mask[:,:,:, bundle] * 0.15 # ISO
+        """
+
+        # create subject folders
+        if not os.path.exists( '%s/%s'%(study,subject) ):
+            os.system( 'mkdir %s/%s'%(study,subject) )
+        if not os.path.exists( '%s/ground_truth/%s'%(study,subject) ):
+            os.system( 'mkdir %s/ground_truth/%s'%(study,subject) )
+
+        nib.save( nib.Nifti1Image(fracs,affine,header), '%s/ground_truth/%s/fracs.nii.gz'%(study,subject) ) 
+
 
 # Plot distribution for the diffusivities
 #------------------------------------------------------------
@@ -399,7 +402,7 @@ def save_phantom_info(args, scheme, kappas, nbundles):
         kappas_str += '%d ' % kappa
 
     with open(args.study_path+'/INFO.txt', 'w') as file:
-        file.write('│Study: %s│\n' % args.study)
+        file.write('│Study: %s│\n' % args.study_path)
         file.write('├── Template: %s\n' % (args.template))
         file.write('├── Dimensions: %d x %d x %d x %d\n' % (X,Y,Z,nsamples))
         file.write('├── Voxel Size: 1 x 1 x 1 x 1 mm\n') #TODO: make this variable
