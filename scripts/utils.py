@@ -14,9 +14,8 @@ phantom_info = {
 # TODO: make this variable
 mean_d_par_ic = 2.0
 mean_d_par_ec = 2.0
-mean_d_perp_ec = 1.0
+mean_d_perp_ec = 1.0 #0.3
 mean_kappa = 20
-d_iso = 3.0
 """
 size_ic  = 0.55
 size_ec  = 0.40
@@ -160,6 +159,16 @@ def tensor_signal(pdd, d_par, d_perp, g, b):
 
     return signal
 
+# Compute ball signal
+#   d_iso: array (nvoxels)
+#   b: matrix (nsamples,nsamples)
+# ------------------------------------------------------------
+def ball_signal(d_iso, b):
+    nvoxels = d_iso.shape[0]
+    nsamples = b.shape[0]
+
+    return np.exp( (-np.repeat(d_iso,nsamples).reshape(nvoxels,nsamples)) @ b )
+
 # Compute tensor signal with dispersion
 #   pdd: matrix (nvoxels,3)
 #   d_par:  array (nvoxels)
@@ -205,33 +214,50 @@ def tensor_signal_with_dispersion(pdd, d_par, d_perp, g, b, ndirs, kappa):
 #   size_iso: float
 #   dispersion: bool
 # ------------------------------------------------------------
-def get_acquisition(model, diff, pdd, g, b, kappa, ndirs, size_ic, size_ec, size_iso, dispersion):
+def get_acquisition(model, diff, pdd, g, b, kappa, ndirs, size_ic, size_ec, size_iso, dispersion, iso):
     nvoxels = diff.shape[0]
     nsamples = g.shape[0]
 
     if model == 'multi-tensor':
-        d_par  = diff[:, 0]
-        d_perp = diff[:, 1]
+        d_par  = diff[:, 1]
+        d_perp = diff[:, 2]
+        d_iso  = diff[:, 3]
 
         if dispersion:
-            return tensor_signal_with_dispersion(pdd, g, b, d_par, d_perp, ndirs, kappa)
+            signal_out = tensor_signal_with_dispersion(pdd, g, b, d_par, d_perp, ndirs, kappa)
         else:
-            return tensor_signal(pdd, d_par, d_perp, g, b)
+            signal_out = tensor_signal(pdd, d_par, d_perp, g, b)
+
+        if iso:
+            signal_out = 0.95*signal_out + 0.05*ball_signal(d_iso, b)
+
     elif model == 'noddi':
         d_par_ic  = diff[:, 0]
         d_par_ec  = diff[:, 1]
         d_perp_ec = diff[:, 2]
+        d_iso     = diff[:, 3]
 
         if dispersion:
-            signal_out =  size_ic * stick_signal_with_dispersion(pdd, d_par_ic, g, b, ndirs, kappa)
-            signal_out += size_ec * tensor_signal_with_dispersion(pdd, d_par_ec, d_perp_ec, g, b, ndirs, kappa)
+            signal_ic = stick_signal_with_dispersion(pdd, d_par_ic, g, b, ndirs, kappa)
+            signal_ec = tensor_signal_with_dispersion(pdd, d_par_ec, d_perp_ec, g, b, ndirs, kappa)
         else:
-            signal_out =  size_ic * stick_signal(pdd, d_par_ic, g, b)
-            signal_out += size_ec * tensor_signal(pdd, d_par_ec, d_perp_ec, g, b)
+            signal_ic = stick_signal(pdd, d_par_ic, g, b)
+            signal_ec = tensor_signal(pdd, d_par_ec, d_perp_ec, g, b)
 
-        signal_out += size_iso * np.exp( (-d_iso*1e-3*np.ones((nvoxels,nsamples), dtype=np.float32)) @ b )
+        if iso: # TODO: take fracs from file
+            signal_iso = ball_signal(d_iso, b)
+            frac_ic  = 0.65
+            frac_ec  = 0.30
+            frac_iso = 0.05
+        else:
+            signal_iso = 0
+            frac_ic  = 0.7
+            frac_ec  = 0.3
+            frac_iso = 0.0
+        
+        signal_out = frac_ic*signal_ic + frac_ec*signal_ec + frac_iso*signal_iso
 
-        return signal_out
+    return signal_out
 
 # Add Rician noise to the signal
 #   signal: matrix (nvoxels,nsamples)
@@ -272,16 +298,18 @@ def generate_diffs(phantom, study, affine, header, mask, nsubjects):
     d_par_ic  = np.random.normal(loc=mean_d_par_ic,  scale=0.01, size=nsubjects*nbundles) * 1e-3
     d_par_ec  = np.random.normal(loc=mean_d_par_ec,  scale=0.01, size=nsubjects*nbundles) * 1e-3
     d_perp_ec = np.random.normal(loc=mean_d_perp_ec, scale=0.01, size=nsubjects*nbundles) * 1e-3
+    d_iso = 3e-3 # TODO: make this variable
 
-    for i in range(nsubjects):
+    for i in range(nsubjects): 
         subject = 'sub-%.3d_ses-1' % (i+1)
-        diffs = np.zeros((X,Y,Z, 3*nbundles), dtype=np.float32)
+        diffs = np.zeros((X,Y,Z, 4*nbundles), dtype=np.float32)
         #diffs_lesion = np.zeros((X,Y,Z, 3*nbundles), dtype=np.float32)
 
         for bundle in range(nbundles):
-            diffs[:,:,:, 3*bundle]   = np.repeat( d_par_ic[i*nbundles + bundle], X*Y*Z ).reshape(X,Y,Z)  * mask[:,:,:, bundle]
-            diffs[:,:,:, 3*bundle+1] = np.repeat( d_par_ec[i*nbundles + bundle], X*Y*Z ).reshape(X,Y,Z)  * mask[:,:,:, bundle]
-            diffs[:,:,:, 3*bundle+2] = np.repeat( d_perp_ec[i*nbundles + bundle], X*Y*Z ).reshape(X,Y,Z) * mask[:,:,:, bundle]
+            diffs[:,:,:, 4*bundle]   = np.repeat( d_par_ic[i*nbundles + bundle], X*Y*Z ).reshape(X,Y,Z)  * mask[:,:,:, bundle]
+            diffs[:,:,:, 4*bundle+1] = np.repeat( d_par_ec[i*nbundles + bundle], X*Y*Z ).reshape(X,Y,Z)  * mask[:,:,:, bundle]
+            diffs[:,:,:, 4*bundle+2] = np.repeat( d_perp_ec[i*nbundles + bundle], X*Y*Z ).reshape(X,Y,Z) * mask[:,:,:, bundle]
+            diffs[:,:,:, 4*bundle+3] = d_iso * mask[:,:,:, bundle]
 
         # create subject folders
         if not os.path.exists( '%s/%s'%(study,subject) ):

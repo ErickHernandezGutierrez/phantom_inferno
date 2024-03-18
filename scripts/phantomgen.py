@@ -8,24 +8,24 @@ parser = argparse.ArgumentParser(description='Generate phantom signal.')
 parser.add_argument('study_path', help='path to the study folder')
 parser.add_argument('scheme',     help='protocol file in format Nx4 text file with [X Y Z b] at each row')
 
-parser.add_argument('--template', default='templates/Phantomas', help='path to the phantom structure template. default: templates/Phantomas')
-parser.add_argument('--model', default='noddi', help="model for the phantom {multi-tensor,noddi}. default: noddi")
-parser.add_argument('--bundles', nargs='*', type=int, help='list of the bundles to be included in the phantom. default: all')
+parser.add_argument('--template', default='templates/Phantomas', help='path to the phantom structure template. [templates/Phantomas]')
+parser.add_argument('--model', default='noddi', help="model for the phantom {multi-tensor,noddi}. [noddi]")
+parser.add_argument('--bundles', nargs='*', type=int, help='list of the bundles to be included in the phantom. [all]')
 
-parser.add_argument('--size_ic',  type=float, default=0.70, help='size of the intra-cellular compartment. default: 0.60')
-parser.add_argument('--size_ec',  type=float, default=0.25, help='size of the extra-cellular compartment. default: 0.35')
-parser.add_argument('--size_iso', type=float, default=0.05, help='size of the isotropic compartment. default: 0.05')
+parser.add_argument('--size_ic',  type=float, default=0.70, help='size of the intra-cellular compartment. [0.70]')
+parser.add_argument('--size_ec',  type=float, default=0.25, help='size of the extra-cellular compartment. [0.35]')
+parser.add_argument('--size_iso', type=float, default=0.05, help='size of the isotropic compartment. [0.05]')
 
-parser.add_argument('--snr',       default=12,   type=int, help='signal to noise ratio. default: 12')
-parser.add_argument('--nsubjects', default=1,    type=int, help='number of subjects in the study. default: 1')
-parser.add_argument('--ndirs',     default=5000, type=int, help='number of dispersion directions. default: 5000')
-parser.add_argument('--nbatches',  default=125,  type=int, help='Number of batches. default: 125')
+parser.add_argument('--snr',       default=12,   type=int, help='signal to noise ratio. [12]')
+parser.add_argument('--nsubjects', default=1,    type=int, help='number of subjects in the study. [1]')
+parser.add_argument('--ndirs',     default=5000, type=int, help='number of dispersion directions. [5000]')
+parser.add_argument('--nbatches',  default=125,  type=int, help='Number of batches. [125]')
 
+parser.add_argument('-iso',               help='add isotropic compartment',              action='store_true')
 parser.add_argument('-noise',             help='add noise to the signal',                action='store_true')
 parser.add_argument('-dispersion',        help='add dispersion to the signal',           action='store_true')
 parser.add_argument('-show_dispersion',   help='show dispersion directions',             action='store_true')
 parser.add_argument('-show_distribution', help='show distribution of the diffusivities', action='store_true')
-
 args = parser.parse_args()
 
 phantom = args.template
@@ -75,9 +75,9 @@ def generate_phantom(pdds, compsize, mask, g, b, nsubjects, nvoxels, nsamples):
         subject = 'sub-%.3d_ses-1' % (i+1)
         print('├── Subject %s' % subject)
 
-        diffs = nib.load('%s/ground_truth/%s/diffs.nii.gz'%(study,subject)).get_fdata().reshape(nvoxels, 3*nbundles).astype(np.float32) # 3 diffusivities x bundle
+        diffs = nib.load('%s/ground_truth/%s/diffs.nii.gz'%(study,subject)).get_fdata().reshape(nvoxels, 4*nbundles).astype(np.float32) # 4 diffusivities x bundle
 
-        dwi = np.zeros( (nvoxels, nsamples), dtype=np.float32 )
+        dwi = np.zeros( (nvoxels,nsamples), dtype=np.float32 )
 
         for bundle in bundles:
             bundle_size = compsize[:,:,:, bundle].flatten()
@@ -90,8 +90,8 @@ def generate_phantom(pdds, compsize, mask, g, b, nsubjects, nvoxels, nsamples):
                 print('│   ├── Bundle %d/%d, Batch %d/%d' % (bundle+1,nbundles,batch+1,nbatches), end='\r')
 
                 batch_pdds = pdds[offset:offset+batch_size, 3*bundle:3*bundle+3]
-                batch_diffs = diffs[offset:offset+batch_size, 3*bundle:3*bundle+3]
-                batch_signal = get_acquisition(model, batch_diffs, batch_pdds, g, b, kappa[i], ndirs, size_ic, size_ec, size_iso, args.dispersion)
+                batch_diffs = diffs[offset:offset+batch_size, 4*bundle:4*bundle+4]
+                batch_signal = get_acquisition(model, batch_diffs, batch_pdds, g, b, kappa[i], ndirs, size_ic, size_ec, size_iso, args.dispersion, args.iso)
 
                 bundle_signal[offset:offset+batch_size, :] = batch_signal
             

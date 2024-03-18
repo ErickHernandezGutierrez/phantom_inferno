@@ -403,7 +403,7 @@ def load_subject_ground_truth( ground_truth_path ):
     gt = {}
 
     for i in range(nbundles):
-        bundle1 = 'bundle-%.2d' % (i+1)
+        bundle1 = 'bundle-%d' % (i+1)
         bundle2 = 'bundle-%d' % (i+1)
         for metric in ['FA','MD','RD','AD']:
             data = nib.load( '%s/%s/%s__%s.nii.gz'%(ground_truth_path,subject,bundle1,metric.lower()) ).get_fdata().flatten()

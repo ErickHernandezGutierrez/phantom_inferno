@@ -128,7 +128,7 @@ for loc,metric in zip(coords, metrics):
     if args.dti:
         ax[ loc ].hist(data[metric], bins=bins, color=color[metric], label='DTI')
     if args.ground_truth:
-        ax[ loc ].vlines(ground_truth[metric], color=ground_truth_color, ymin=0, ymax=500, linewidth=3)
+        ax[ loc ].vlines(ground_truth[metric], color=ground_truth_color, ymin=0, ymax=15000, linewidth=3, label='GT')
     ax[ loc ].set_xlabel(metric)
     #ax[ loc ].set_facecolor(background_color)
     ax[ loc ].legend(loc='upper right')

@@ -39,9 +39,9 @@ for i in range(nsubjects):
     if not os.path.exists( dti_path ):
         os.system('mkdir %s' % (dti_path))
     if args.mask:
-        os.system('dti %s/%s/corrected_dwi.nii.gz %s %s/%s/dti/results -mask %s -response 0 -correction 0 > %s/%s/dti/log.txt' % (study,subject,scheme,study,subject,mask,study,subject))
+        os.system('dti %s/%s/corrected_dwi.nii.gz %s %s/%s/dti/results -mask %s -response 0 -correction 0 > %s/%s/dti/dti_log.txt' % (study,subject,scheme,study,subject,mask,study,subject))
     else:
-        os.system('dti %s/%s/corrected_dwi.nii.gz %s %s/%s/dti/results -response 0 -correction 0 > %s/%s/dti/log.txt' % (study,subject,scheme,study,subject,study,subject))
+        os.system('dti %s/%s/corrected_dwi.nii.gz %s %s/%s/dti/results -response 0 -correction 0 > %s/%s/dti/dti_log.txt' % (study,subject,scheme,study,subject,study,subject))
 
     print('│   ├── Extracting DTI Metrics')
     os.system('tensor2metric %s/%s/dti/results_DTInolin_Tensor.nii.gz \
@@ -56,9 +56,9 @@ for i in range(nsubjects):
         os.system('mkdir %s' % (mrds_path))
     lambda1, lambda23 = read_lambdas('%s/%s/dti/results_DTInolin_ResponseAnisotropic.txt' % (study,subject))
     if args.mask:
-        os.system('mdtmrds %s/%s/corrected_dwi.nii.gz %s %s/%s/mrds/results -correction 0 -response %.9f,%.9f -mask %s -modsel %s -each -intermediate -iso -mse -method diff > %s/%s/mrds/log.txt' % (study,subject,scheme,study,subject,lambda1,lambda23,mask,modsel,study,subject))
+        os.system('mdtmrds %s/%s/corrected_dwi.nii.gz %s %s/%s/mrds/results -correction 0 -response %.9f,%.9f,0.003 -mask %s -modsel %s -each -intermediate -iso -mse -method diff > %s/%s/mrds/mdtmrds_log.txt' % (study,subject,scheme,study,subject,lambda1,lambda23,mask,modsel,study,subject))
     else:
-        os.system('mdtmrds %s/%s/corrected_dwi.nii.gz %s %s/%s/mrds/results -correction 0 -response %.9f,%.9f -modsel %s -each -intermediate -iso -mse -method diff > %s/%s/mrds/log.txt' % (study,subject,scheme,study,subject,lambda1,lambda23,modsel,study,subject))
+        os.system('mdtmrds %s/%s/corrected_dwi.nii.gz %s %s/%s/mrds/results -correction 0 -response %.9f,%.9f,0.003 -modsel %s -each -intermediate -iso -mse -method diff > %s/%s/mrds/mdtmrds_log.txt' % (study,subject,scheme,study,subject,lambda1,lambda23,modsel,study,subject))
 
     print('│   ├── Extracting MRDS Metrics')
     if args.mask:

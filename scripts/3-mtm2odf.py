@@ -22,4 +22,4 @@ for i in range(nsubjects):
     print('├── Subject %s' % subject)
 
     print('│   ├── Converting MTF to ODFs')
-    os.system('mdtodf %s/%s/mrds/results_MRDS_Diff_%s_COMP_SIZE.nii.gz %s/%s/mrds/results_MRDS_Diff_%s_PDDs_CARTESIAN.nii.gz %s/%s/mrds/results_MRDS_Diff_%s_ODF -eig %s/%s/mrds/results_MRDS_Diff_%s_EIGENVALUES.nii.gz -mask %s -minmax > mdtodf_log.txt' % (study,subject,modsel.upper(),study,subject,modsel.upper(),study,subject,modsel.upper(),study,subject,modsel.upper(),mask))
+    os.system('mdtodf %s/%s/mrds/results_MRDS_Diff_%s_COMP_SIZE.nii.gz %s/%s/mrds/results_MRDS_Diff_%s_PDDs_CARTESIAN.nii.gz %s/%s/mrds/results_MRDS_Diff_%s_ODF -eig %s/%s/mrds/results_MRDS_Diff_%s_EIGENVALUES.nii.gz -mask %s -minmax > %s/%s/mrds/mdtodf_log.txt' % (study,subject,modsel.upper(),study,subject,modsel.upper(),study,subject,modsel.upper(),study,subject,modsel.upper(),mask,study,subject))
