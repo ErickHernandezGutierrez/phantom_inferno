@@ -22,7 +22,7 @@ for (x,y,z,b) in scheme:
     if bval in bvals:
         bvals[bval] += 1
     else:
-        bvals[bval] = 0
+        bvals[bval] = 1
 
 print('Total bvals: %d' % len(bvals))
 for key in bvals:

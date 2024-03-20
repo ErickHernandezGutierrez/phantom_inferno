@@ -423,7 +423,7 @@ def save_phantom_info(args, scheme, kappas, nbundles):
         if bval in bvals:
             bvals[bval] += 1
         else:
-            bvals[bval] = 0
+            bvals[bval] = 1
 
     kappas_str = ''
     for kappa in kappas:
