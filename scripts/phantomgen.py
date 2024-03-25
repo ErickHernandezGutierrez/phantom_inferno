@@ -157,7 +157,11 @@ b = np.identity( nsamples,dtype=np.float32 ) * scheme[:,3]
 # matrix with PDDs
 pdds = pdds.reshape(nvoxels, 3*nbundles)
 
-generate_diffs(phantom, study, affine, header, mask, nsubjects)
+subjects = ['sub-%.3d_ses-1'%(i+1) for i in range(nsubjects)]
+
+generate_fracs(phantom, study, affine, header, mask, subjects)
+
+generate_diffs(phantom, study, affine, header, mask, subjects)
 
 generate_phantom(pdds, compsize, mask, g, b, nsubjects, nvoxels, nsamples)
 

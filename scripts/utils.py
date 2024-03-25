@@ -16,18 +16,14 @@ mean_d_par_ic = 2.0
 mean_d_par_ec = 2.0
 mean_d_perp_ec = 1.0 #0.3
 mean_kappa = 20
-"""
-size_ic  = 0.55
-size_ec  = 0.40
-size_iso = 0.05
-"""
+f = 0.7
 
 def lambdas2fa(lambdas):
     a = np.sqrt(0.5)
     b = np.sqrt( (lambdas[0]-lambdas[1])**2 + (lambdas[1]-lambdas[2])**2 + (lambdas[2]-lambdas[0])**2 )
     c = np.sqrt( lambdas[0]**2 + lambdas[1]**2 + lambdas[2]**2 )
 
-    return a*b/c
+    return a*b/(c + 1e-6)
 
 def lambdas2md(lambdas):
     return ( lambdas[0]+lambdas[1]+lambdas[2] )/3
@@ -49,6 +45,17 @@ def load_scheme(scheme_filename):
 
     return np.array( scheme, dtype=np.float32 )
 
+def load_polynomial(type='normal'):
+    coefs = np.load('data/polynomials/coefs_%s.npy' % type)
+    points = np.load('data/polynomials/points_%s.npy' % type)
+
+    # Create the polynomial function
+    polynomial_function = np.poly1d(coefs)
+
+    # Adjust the polynomial output to add back the baseline
+    final_polynomial = lambda x_val: polynomial_function(x_val) + np.poly1d(np.polyfit([points[:,0][0], points[:,0][-1]], [points[:,1][0], points[:,1][-1]], 1))(x_val)
+
+    return final_polynomial
 
 # Give a random sample of angles between to limits
 # ------------------------------------------------------------
@@ -237,6 +244,10 @@ def get_acquisition(model, diff, pdd, g, b, kappa, ndirs, size_ic, size_ec, size
         d_perp_ec = diff[:, 2]
         d_iso     = diff[:, 3]
 
+        frac_ic  = 0.7 # TODO: take fracs from file
+        frac_ec  = 0.3
+        frac_iso = 0.0
+
         if dispersion:
             signal_ic = stick_signal_with_dispersion(pdd, d_par_ic, g, b, ndirs, kappa)
             signal_ec = tensor_signal_with_dispersion(pdd, d_par_ec, d_perp_ec, g, b, ndirs, kappa)
@@ -244,18 +255,11 @@ def get_acquisition(model, diff, pdd, g, b, kappa, ndirs, size_ic, size_ec, size
             signal_ic = stick_signal(pdd, d_par_ic, g, b)
             signal_ec = tensor_signal(pdd, d_par_ec, d_perp_ec, g, b)
 
-        if iso: # TODO: take fracs from file
+        signal_out = frac_ic*signal_ic + (1-frac_ic)*signal_ec
+
+        if iso:
             signal_iso = ball_signal(d_iso, b)
-            frac_ic  = 0.65
-            frac_ec  = 0.30
-            frac_iso = 0.05
-        else:
-            signal_iso = 0
-            frac_ic  = 0.7
-            frac_ec  = 0.3
-            frac_iso = 0.0
-        
-        signal_out = frac_ic*signal_ic + frac_ec*signal_ec + frac_iso*signal_iso
+            signal_out = 0.95*signal_out + 0.05*signal_iso
 
     return signal_out
 
@@ -289,48 +293,21 @@ def success_rate(ref, mosemap):
 
     return success / float(total)
 
-# Generate random diffusivities in a healthy range for every bundle and subject
-#------------------------------------------------------------
-def generate_diffs(phantom, study, affine, header, mask, nsubjects):
+"""
+Generate volume fractions
+------------------------------------------------------------
+"""
+def generate_fracs(phantom, study, affine, header, masks, subjects):
     nbundles = phantom_info[phantom]['nbundles']
     X,Y,Z = phantom_info[phantom]['dims']
 
-    d_par_ic  = np.random.normal(loc=mean_d_par_ic,  scale=0.01, size=nsubjects*nbundles) * 1e-3
-    d_par_ec  = np.random.normal(loc=mean_d_par_ec,  scale=0.01, size=nsubjects*nbundles) * 1e-3
-    d_perp_ec = np.random.normal(loc=mean_d_perp_ec, scale=0.01, size=nsubjects*nbundles) * 1e-3
-    d_iso = 3e-3 # TODO: make this variable
-
-    for i in range(nsubjects): 
-        subject = 'sub-%.3d_ses-1' % (i+1)
-        diffs = np.zeros((X,Y,Z, 4*nbundles), dtype=np.float32)
-        #diffs_lesion = np.zeros((X,Y,Z, 3*nbundles), dtype=np.float32)
-
-        for bundle in range(nbundles):
-            diffs[:,:,:, 4*bundle]   = np.repeat( d_par_ic[i*nbundles + bundle], X*Y*Z ).reshape(X,Y,Z)  * mask[:,:,:, bundle]
-            diffs[:,:,:, 4*bundle+1] = np.repeat( d_par_ec[i*nbundles + bundle], X*Y*Z ).reshape(X,Y,Z)  * mask[:,:,:, bundle]
-            diffs[:,:,:, 4*bundle+2] = np.repeat( d_perp_ec[i*nbundles + bundle], X*Y*Z ).reshape(X,Y,Z) * mask[:,:,:, bundle]
-            diffs[:,:,:, 4*bundle+3] = d_iso * mask[:,:,:, bundle]
-
-        # create subject folders
-        if not os.path.exists( '%s/%s'%(study,subject) ):
-            os.system( 'mkdir %s/%s'%(study,subject) )
-        if not os.path.exists( '%s/ground_truth/%s'%(study,subject) ):
-            os.system( 'mkdir %s/ground_truth/%s'%(study,subject) )
-
-        nib.save( nib.Nifti1Image(diffs,affine,header), '%s/ground_truth/%s/diffs.nii.gz'%(study,subject) ) 
-
-def generate_fracs(phantom, study, affine, header, mask, bundles, nsubjects):
-    nbundles = phantom_info[phantom]['nbundles']
-    X,Y,Z = phantom_info[phantom]['dims']
-
-    for i in range(nsubjects):
-        subject = 'sub-%.3d_ses-1' % (i+1)
+    for subject in subjects:
         fracs = np.zeros((X,Y,Z, 3*nbundles), dtype=np.float32)
 
-        for bundle in bundles:
-            fracs[:,:,:, 3*bundle]   = mask[:,:,:, bundle] * size_ic
-            fracs[:,:,:, 3*bundle+1] = mask[:,:,:, bundle] * size_ec
-            fracs[:,:,:, 3*bundle+2] = mask[:,:,:, bundle] * size_iso
+        for bundle in range(nbundles):
+            fracs[:,:,:, 3*bundle]   = masks[:,:,:, bundle] * 0.7
+            fracs[:,:,:, 3*bundle+1] = masks[:,:,:, bundle] * 0.3
+            fracs[:,:,:, 3*bundle+2] = masks[:,:,:, bundle] * 0.05
 
         """
         for bundle in lesion_bundles:
@@ -346,6 +323,43 @@ def generate_fracs(phantom, study, affine, header, mask, bundles, nsubjects):
             os.system( 'mkdir %s/ground_truth/%s'%(study,subject) )
 
         nib.save( nib.Nifti1Image(fracs,affine,header), '%s/ground_truth/%s/fracs.nii.gz'%(study,subject) ) 
+
+"""
+Generate random diffusivities in a healthy range for every bundle and subject
+-----------------------------------------------------------------------------
+"""
+def generate_diffs(phantom, study, affine, header, masks, subjects):
+    nsubjects = len(subjects)
+    nbundles = phantom_info[phantom]['nbundles']
+    X,Y,Z = phantom_info[phantom]['dims']
+
+    d_par_ic  = np.random.normal(loc=mean_d_par_ic,  scale=0.01, size=nsubjects*nbundles) * 1e-3
+    d_par_ec  = np.random.normal(loc=mean_d_par_ec,  scale=0.01, size=nsubjects*nbundles) * 1e-3
+    #d_perp_ec = np.random.normal(loc=mean_d_perp_ec, scale=0.01, size=nsubjects*nbundles) * 1e-3
+    d_iso = 3e-3 # TODO: make this variable
+
+    tortuosity_model = load_polynomial()
+
+    for i,subject in enumerate(subjects):
+        diffs = np.zeros((X,Y,Z, 4*nbundles), dtype=np.float32)
+        fracs = nib.load( '%s/ground_truth/%s/fracs.nii.gz'%(study,subject) ).get_fdata().astype(np.float32)
+
+        for bundle in range(nbundles):
+            fracs_ec  = fracs[:,:,:, 3*bundle+1].flatten()
+            d_perp_ec = tortuosity_model(fracs_ec) * 1e-3
+
+            diffs[:,:,:, 4*bundle]   = np.repeat( d_par_ic[i*nbundles + bundle], X*Y*Z ).reshape(X,Y,Z) * masks[:,:,:, bundle]
+            diffs[:,:,:, 4*bundle+1] = np.repeat( d_par_ec[i*nbundles + bundle], X*Y*Z ).reshape(X,Y,Z) * masks[:,:,:, bundle]
+            diffs[:,:,:, 4*bundle+2] = d_perp_ec.reshape(X,Y,Z) * masks[:,:,:, bundle]
+            diffs[:,:,:, 4*bundle+3] = d_iso * masks[:,:,:, bundle]
+
+        # create subject folders
+        if not os.path.exists( '%s/%s'%(study,subject) ):
+            os.system( 'mkdir %s/%s'%(study,subject) )
+        if not os.path.exists( '%s/ground_truth/%s'%(study,subject) ):
+            os.system( 'mkdir %s/ground_truth/%s'%(study,subject) )
+
+        nib.save( nib.Nifti1Image(diffs,affine,header), '%s/ground_truth/%s/diffs.nii.gz'%(study,subject) ) 
 
 
 # Plot distribution for the diffusivities
@@ -408,6 +422,37 @@ def plot_dispersion_dirs(ndirs):
 
     # TODO: add subplot with the dispersion ODF
 
+    plt.show()
+
+def plot_polynomials():
+    poly_normal = load_polynomial()
+    poly_demyelination = load_polynomial(type='demyelination')
+    poly_axonloss = load_polynomial(type='axonloss')
+
+    points_normal = np.load('data/polynomials/points_normal.npy')
+    points_demyelination = np.load('data/polynomials/points_demyelination.npy')
+    points_axonloss = np.load('data/polynomials/points_axonloss.npy')
+
+    font_size=12
+    font = {'size' : font_size}
+    matplotlib.rc('font', **font)
+
+    x_range = np.linspace(0.25, 1, 100)
+
+    plt.title('Tortuosity Model Functions')
+
+    plt.scatter(points_normal[:,0], points_normal[:,1], label='Points Normal', color='black', marker='o')
+    plt.scatter(points_demyelination[:,0], points_demyelination[:,1], label='Points Demyelination', color='green', marker='x')
+    plt.scatter(points_axonloss[:,0], points_axonloss[:,1], label='Points Axon Loss', color='blue', marker='^')
+
+    plt.plot(x_range, poly_normal(x_range), label='Polynomial Normal', color='black')
+    plt.plot(x_range, poly_demyelination(x_range), label='Polynomial Demyelination', color='lightgreen')
+    plt.plot(x_range, poly_axonloss(x_range), label='Polynomial Axon Loss', color='lightblue')
+
+    plt.xlabel('1-f')
+    plt.ylabel(r'$D^\perp_{EC}$')
+
+    plt.legend()
     plt.show()
 
 # Save phantom info
