@@ -30,8 +30,8 @@ y_demyelination = np.array([0.375, 0.42672535, 0.47580492, 0.52301349, 0.5708669
  0.6614416,  0.70502417, 0.74917127, 0.79299033, 0.83558773, 0.87654059,
  0.9191989,  0.96236188, 1.00748696, 1.05      ])
 
-y_demyelination = np.array([0.375, 0.40672535, 0.45580492, 0.47301349, 0.5086698, 0.57705801,
- 0.6614416,  0.70502417, 0.74917127, 0.79299033, 0.83558773, 0.87654059,
+y_demyelination = np.array([0.375, 0.41672535, 0.45580492, 0.50301349, 0.55086698, 0.60705801,
+ 0.6814416,  0.72502417, 0.76917127, 0.81299033, 0.83558773, 0.88654059,
  0.9191989,  0.96236188, 1.00748696, 1.05      ])
 
 y_normal = np.array([
@@ -117,7 +117,7 @@ def fit_polynomial(x, y, coefs_filename, points_filename, degree=5):
 
 # Fit Polynomials
 p_normal = fit_polynomial(x, y_normal, 'coefs_normal.npy', 'points_normal.npy')
-p_demyelination = fit_polynomial(x_demyelination, y_demyelination, 'coefs_demyelination.npy', 'points_demyelination.npy')
+p_demyelination = fit_polynomial(x_demyelination, y_demyelination, 'coefs_demyelination.npy', 'points_demyelination.npy', degree=7)
 p_axonloss = fit_polynomial(x, y_axonloss, 'coefs_axonloss.npy', 'points_axonloss.npy')
 
 # Plotting

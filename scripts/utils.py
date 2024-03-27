@@ -221,45 +221,45 @@ def tensor_signal_with_dispersion(pdd, d_par, d_perp, g, b, ndirs, kappa):
 #   size_iso: float
 #   dispersion: bool
 # ------------------------------------------------------------
-def get_acquisition(model, diff, pdd, g, b, kappa, ndirs, size_ic, size_ec, size_iso, dispersion, iso):
-    nvoxels = diff.shape[0]
+def get_acquisition(model, diffs, fracs, pdds, g, b, kappa, ndirs, dispersion, iso):
+    nvoxels = diffs.shape[0]
     nsamples = g.shape[0]
 
     if model == 'multi-tensor':
-        d_par  = diff[:, 1]
-        d_perp = diff[:, 2]
-        d_iso  = diff[:, 3]
+        d_par  = diffs[:, 1]
+        d_perp = diffs[:, 2]
+        d_iso  = diffs[:, 3]
 
         if dispersion:
-            signal_out = tensor_signal_with_dispersion(pdd, g, b, d_par, d_perp, ndirs, kappa)
+            signal_out = tensor_signal_with_dispersion(pdds, g, b, d_par, d_perp, ndirs, kappa)
         else:
-            signal_out = tensor_signal(pdd, d_par, d_perp, g, b)
+            signal_out = tensor_signal(pdds, d_par, d_perp, g, b)
 
         if iso:
             signal_out = 0.95*signal_out + 0.05*ball_signal(d_iso, b)
 
     elif model == 'noddi':
-        d_par_ic  = diff[:, 0]
-        d_par_ec  = diff[:, 1]
-        d_perp_ec = diff[:, 2]
-        d_iso     = diff[:, 3]
-
-        frac_ic  = 0.7 # TODO: take fracs from file
-        frac_ec  = 0.3
-        frac_iso = 0.0
+        d_par_ic  = diffs[:, 0]
+        d_par_ec  = diffs[:, 1]
+        d_perp_ec = diffs[:, 2]
+        d_iso     = diffs[:, 3]
 
         if dispersion:
-            signal_ic = stick_signal_with_dispersion(pdd, d_par_ic, g, b, ndirs, kappa)
-            signal_ec = tensor_signal_with_dispersion(pdd, d_par_ec, d_perp_ec, g, b, ndirs, kappa)
+            signal_ic = stick_signal_with_dispersion(pdds, d_par_ic, g, b, ndirs, kappa)
+            signal_ec = tensor_signal_with_dispersion(pdds, d_par_ec, d_perp_ec, g, b, ndirs, kappa)
         else:
-            signal_ic = stick_signal(pdd, d_par_ic, g, b)
-            signal_ec = tensor_signal(pdd, d_par_ec, d_perp_ec, g, b)
+            signal_ic = stick_signal(pdds, d_par_ic, g, b)
+            signal_ec = tensor_signal(pdds, d_par_ec, d_perp_ec, g, b)
 
-        signal_out = frac_ic*signal_ic + (1-frac_ic)*signal_ec
+        frac_ic  = np.repeat(fracs[:, 0],nsamples).reshape(nvoxels,nsamples)
+        frac_ec  = np.repeat(fracs[:, 1],nsamples).reshape(nvoxels,nsamples)
+        frac_iso = np.repeat(fracs[:, 2],nsamples).reshape(nvoxels,nsamples)
+
+        signal_out = frac_ic*signal_ic + frac_ec*signal_ec
 
         if iso:
             signal_iso = ball_signal(d_iso, b)
-            signal_out = 0.95*signal_out + 0.05*signal_iso
+            signal_out = (1-frac_iso)*signal_out + frac_iso*signal_iso
 
     return signal_out
 
@@ -297,7 +297,7 @@ def success_rate(ref, mosemap):
 Generate volume fractions
 ------------------------------------------------------------
 """
-def generate_fracs(phantom, study, affine, header, masks, subjects):
+def generate_fracs(phantom, study, affine, header, masks, subjects, lesion_bundles, lesion_masks):
     nbundles = phantom_info[phantom]['nbundles']
     X,Y,Z = phantom_info[phantom]['dims']
 
@@ -305,16 +305,18 @@ def generate_fracs(phantom, study, affine, header, masks, subjects):
         fracs = np.zeros((X,Y,Z, 3*nbundles), dtype=np.float32)
 
         for bundle in range(nbundles):
-            fracs[:,:,:, 3*bundle]   = masks[:,:,:, bundle] * 0.7
-            fracs[:,:,:, 3*bundle+1] = masks[:,:,:, bundle] * 0.3
-            fracs[:,:,:, 3*bundle+2] = masks[:,:,:, bundle] * 0.05
+            if bundle in lesion_bundles:
+                fracs[:,:,:, 3*bundle]   = (masks[:,:,:, bundle]-lesion_masks[:,:,:, bundle]) * 0.7
+                fracs[:,:,:, 3*bundle+1] = (masks[:,:,:, bundle]-lesion_masks[:,:,:, bundle]) * 0.3
+                fracs[:,:,:, 3*bundle+2] = (masks[:,:,:, bundle]-lesion_masks[:,:,:, bundle]) * 0.05
 
-        """
-        for bundle in lesion_bundles:
-            fracs[:,:,:, 3*bundle]   = lesion_mask[:,:,:, bundle] * 0.50 # IC
-            fracs[:,:,:, 3*bundle+1] = lesion_mask[:,:,:, bundle] * 0.35 # EC
-            fracs[:,:,:, 3*bundle+2] = lesion_mask[:,:,:, bundle] * 0.15 # ISO
-        """
+                fracs[:,:,:, 3*bundle]   += lesion_masks[:,:,:, bundle] * 0.68
+                fracs[:,:,:, 3*bundle+1] += lesion_masks[:,:,:, bundle] * 0.32
+                fracs[:,:,:, 3*bundle+2] += lesion_masks[:,:,:, bundle] * 0.05
+            else:
+                fracs[:,:,:, 3*bundle]   = masks[:,:,:, bundle] * 0.7
+                fracs[:,:,:, 3*bundle+1] = masks[:,:,:, bundle] * 0.3
+                fracs[:,:,:, 3*bundle+2] = masks[:,:,:, bundle] * 0.05
 
         # create subject folders
         if not os.path.exists( '%s/%s'%(study,subject) ):
@@ -328,17 +330,17 @@ def generate_fracs(phantom, study, affine, header, masks, subjects):
 Generate random diffusivities in a healthy range for every bundle and subject
 -----------------------------------------------------------------------------
 """
-def generate_diffs(phantom, study, affine, header, masks, subjects):
+def generate_diffs(phantom, study, affine, header, masks, subjects, lesion_bundles, lesion_masks):
     nsubjects = len(subjects)
     nbundles = phantom_info[phantom]['nbundles']
     X,Y,Z = phantom_info[phantom]['dims']
 
     d_par_ic  = np.random.normal(loc=mean_d_par_ic,  scale=0.01, size=nsubjects*nbundles) * 1e-3
     d_par_ec  = np.random.normal(loc=mean_d_par_ec,  scale=0.01, size=nsubjects*nbundles) * 1e-3
-    #d_perp_ec = np.random.normal(loc=mean_d_perp_ec, scale=0.01, size=nsubjects*nbundles) * 1e-3
     d_iso = 3e-3 # TODO: make this variable
 
-    tortuosity_model = load_polynomial()
+    tortuosity_normal = load_polynomial()
+    tortuosity_demyelination = load_polynomial(type='demyelination')
 
     for i,subject in enumerate(subjects):
         diffs = np.zeros((X,Y,Z, 4*nbundles), dtype=np.float32)
@@ -346,11 +348,17 @@ def generate_diffs(phantom, study, affine, header, masks, subjects):
 
         for bundle in range(nbundles):
             fracs_ec  = fracs[:,:,:, 3*bundle+1].flatten()
-            d_perp_ec = tortuosity_model(fracs_ec) * 1e-3
+            d_perp_ec = tortuosity_normal(fracs_ec) * 1e-3
+            d_perp_ec_lesion = tortuosity_demyelination(fracs_ec) * 1e-3
+            
+            if bundle in lesion_bundles:
+                diffs[:,:,:, 4*bundle+2] = d_perp_ec.reshape(X,Y,Z) * (masks[:,:,:, bundle]-lesion_masks[:,:,:, bundle])
+                diffs[:,:,:, 4*bundle+2] += d_perp_ec_lesion.reshape(X,Y,Z) * lesion_masks[:,:,:, bundle]
+            else:
+                diffs[:,:,:, 4*bundle+2] = d_perp_ec.reshape(X,Y,Z) * masks[:,:,:, bundle]
 
             diffs[:,:,:, 4*bundle]   = np.repeat( d_par_ic[i*nbundles + bundle], X*Y*Z ).reshape(X,Y,Z) * masks[:,:,:, bundle]
             diffs[:,:,:, 4*bundle+1] = np.repeat( d_par_ec[i*nbundles + bundle], X*Y*Z ).reshape(X,Y,Z) * masks[:,:,:, bundle]
-            diffs[:,:,:, 4*bundle+2] = d_perp_ec.reshape(X,Y,Z) * masks[:,:,:, bundle]
             diffs[:,:,:, 4*bundle+3] = d_iso * masks[:,:,:, bundle]
 
         # create subject folders
@@ -457,7 +465,7 @@ def plot_polynomials():
 
 # Save phantom info
 #------------------------------------------------------------
-def save_phantom_info(args, scheme, kappas, nbundles):
+def save_phantom_info(args, scheme, bundles, lesion_bundles, kappas):
     X,Y,Z = phantom_info[args.template]['dims']
     nsamples = len(scheme)
 
@@ -474,21 +482,36 @@ def save_phantom_info(args, scheme, kappas, nbundles):
     for kappa in kappas:
         kappas_str += '%d ' % kappa
 
-    with open(args.study_path+'/INFO.txt', 'w') as file:
+    bundles_str = ''
+    for bundle in bundles:
+        bundles_str += '%d ' % (bundle+1)
+
+    lesion_bundles_str = ''
+    for bundle in lesion_bundles:
+        lesion_bundles_str += '%d ' % (bundle+1)
+
+    bvals_str = ''
+    for key in bvals:
+        bvals_str += '(%d,%d) ' % (key,bvals[key])
+
+    with open(args.study_path+'/README.txt', 'w') as file:
         file.write('│Study: %s│\n' % args.study_path)
-        file.write('├── Template: %s\n' % (args.template))
+        file.write('├── Structure: %s\n' % (args.template))
         file.write('├── Dimensions: %d x %d x %d x %d\n' % (X,Y,Z,nsamples))
         file.write('├── Voxel Size: 1 x 1 x 1 x 1 mm\n') #TODO: make this variable
         file.write('├── Model: %s\n' % (args.model))
         file.write('├── SNR: %d\n' % (args.snr))
+        file.write('├── ISO: %s\n' % (args.iso))
         file.write('├── Num. Dispersion Directions: %d\n' % (args.ndirs))
         file.write('├── Num. Subjects: %d\n' % (args.nsubjects))
-        file.write('├── Num. Bundles: %d\n' % (nbundles))
-        file.write('├── Compartment Size (IC, EC, ISO): (%.2f,%.2f,%.2f)\n' % (args.size_ic,args.size_ec,args.size_iso))
+        file.write('├── Num. Bundles: %d\n' % (len(bundles)))
+        file.write('│   └── Bundle List: %s\n' % (bundles_str))
+        file.write('├── Num. Lesion Bundles: %d\n' % (len(lesion_bundles)))
+        file.write('│   └── Bundle List: %s\n' % (lesion_bundles_str))
         file.write('├── Dispersion: %s\n' % (args.dispersion))
         file.write('│   ├── Num. Directions: %d\n' % (args.ndirs))
         file.write('│   └── Bundle Kappas: %s\n' % (kappas_str))
-        file.write('├── Protocol: %s\n' % (args.scheme))
-        file.write('│   ├── Num. b-vals: %d\n' % (len(bvals)))
-        for key in bvals:
-            file.write('│   ├── b-val %d: %d directions\n' % (key, bvals[key]))
+        file.write('└── Protocol: %s\n' % (args.scheme))
+        file.write('    ├── Num. b-values: %d\n' % (len(bvals)))
+        file.write('    ├── Num. Gradient Directions: %d\n' % (nsamples))
+        file.write('    └── (b-value,ndirs): %s\n' % (bvals_str))
