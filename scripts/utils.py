@@ -306,16 +306,16 @@ def generate_fracs(phantom, study, affine, header, masks, subjects, lesion_bundl
 
         for bundle in range(nbundles):
             if bundle in lesion_bundles:
-                fracs[:,:,:, 3*bundle]   = (masks[:,:,:, bundle]-lesion_masks[:,:,:, bundle]) * 0.7
-                fracs[:,:,:, 3*bundle+1] = (masks[:,:,:, bundle]-lesion_masks[:,:,:, bundle]) * 0.3
+                fracs[:,:,:, 3*bundle]   = (masks[:,:,:, bundle]-lesion_masks[:,:,:, bundle]) * 0.65
+                fracs[:,:,:, 3*bundle+1] = (masks[:,:,:, bundle]-lesion_masks[:,:,:, bundle]) * 0.35
                 fracs[:,:,:, 3*bundle+2] = (masks[:,:,:, bundle]-lesion_masks[:,:,:, bundle]) * 0.05
 
-                fracs[:,:,:, 3*bundle]   += lesion_masks[:,:,:, bundle] * 0.68
-                fracs[:,:,:, 3*bundle+1] += lesion_masks[:,:,:, bundle] * 0.32
+                fracs[:,:,:, 3*bundle]   += lesion_masks[:,:,:, bundle] * 0.55
+                fracs[:,:,:, 3*bundle+1] += lesion_masks[:,:,:, bundle] * 0.45
                 fracs[:,:,:, 3*bundle+2] += lesion_masks[:,:,:, bundle] * 0.05
             else:
-                fracs[:,:,:, 3*bundle]   = masks[:,:,:, bundle] * 0.7
-                fracs[:,:,:, 3*bundle+1] = masks[:,:,:, bundle] * 0.3
+                fracs[:,:,:, 3*bundle]   = masks[:,:,:, bundle] * 0.65
+                fracs[:,:,:, 3*bundle+1] = masks[:,:,:, bundle] * 0.35
                 fracs[:,:,:, 3*bundle+2] = masks[:,:,:, bundle] * 0.05
 
         # create subject folders
