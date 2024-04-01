@@ -7,14 +7,14 @@ from utils import phantom_info
 parser = argparse.ArgumentParser(description='Plot output tractometry statistics')
 parser.add_argument('input_path', help='input path with the results of the tractometry')
 parser.add_argument('subject', help='subject')
-parser.add_argument('output_path', help='path to save the output plots')
 parser.add_argument('--ground_truth', help='path to the ground truth')
 args = parser.parse_args()
 
 results_tractometry = args.input_path
 subject = args.subject
-output_path = args.output_path
 ground_truth_path = args.ground_truth
+
+npoints = 20
 
 def rename_metric(bundle_name, metric):
     if 'ad' in metric:
@@ -129,7 +129,7 @@ facecolor = {
     'fixel-AD': '#FFF7B0'
 }
 
-def plot_subject_stats(means, stds, alpha=0.55, font_size=15, ground_truth=None):
+def plot_subject_stats(means, stds, alpha=0.55, font_size=15, gt=None):
     phantom = 'templates/Phantomas'
     nbundles = phantom_info[phantom]['nbundles']
     bundles = ['bundle-%d'%(i+1) for i in range(nbundles)]
@@ -148,16 +148,17 @@ def plot_subject_stats(means, stds, alpha=0.55, font_size=15, ground_truth=None)
             fixel_std  = np.array(stds[(bundle,'fixel-'+metric)]).ravel()
             dim = np.arange(1, len(mean)+1, 1)
 
-            """if metric!='FA':
+            if metric!='FA':
                 mean *= 1e3
                 std *= 1e3
                 fixel_mean *= 1e3
-                fixel_std *= 1e3#"""
+                fixel_std *= 1e3
+                if ground_truth != None:
+                    gt[(bundle,metric)] *= 1e3 #"""
 
             # plot ground truth
             if ground_truth != None:
-                gt = np.repeat(ground_truth[(bundle,metric)], len(dim))
-                ax[ loc[metric] ].plot(dim, gt, color=ground_truth_color, linewidth=3, solid_capstyle='round', label='GT')
+                ax[ loc[metric] ].plot(dim, gt[(bundle,metric)], color=ground_truth_color, linewidth=3, solid_capstyle='round', label='GT')
 
             # plot DTI metrics
             ax[ loc[metric] ].plot(dim, mean, color=color[metric], linewidth=3, solid_capstyle='round', label=metric)
@@ -169,13 +170,16 @@ def plot_subject_stats(means, stds, alpha=0.55, font_size=15, ground_truth=None)
 
             # add plot info
             ax[ loc[metric] ].set_xlabel('Location along the streamline')
-            ax[ loc[metric] ].set_ylabel(metric)#(metric + r' [$\mu m^2/ms$]')
+            if metric != 'FA':
+                ax[ loc[metric] ].set_ylabel(metric + r' [$\mu m^2/ms$]')
+            else:
+                ax[ loc[metric] ].set_ylabel(metric)
             ax[ loc[metric] ].set_facecolor(background_color)
             ax[ loc[metric] ].set_xticks( np.arange(1, len(mean)+1, 2) )
             ax[ loc[metric] ].legend(loc='upper right')
             ax[ loc[metric] ].grid(True)
 
-        fig.savefig('%s/%s__%s.png' % (output_path,subject,bundle), bbox_inches='tight')
+        fig.savefig('%s/%s__%s.png' % (results_tractometry,subject,bundle), bbox_inches='tight')
     #plt.show()
 
 def load_group_stats(json_filename):
@@ -399,17 +403,27 @@ def plot_gt_stats(ax, mean, title='', xlabel='', ylabel='', color='#000000', alp
 def load_subject_ground_truth( ground_truth_path ):
     phantom = 'templates/Phantomas'
     nbundles = phantom_info[phantom]['nbundles']
+    bundles = ['bundle-%d' % (i+1) for i in range(nbundles)]
 
-    gt = {}
+    stats_gt = {}
 
-    for i in range(nbundles):
-        bundle1 = 'bundle-%d' % (i+1)
-        bundle2 = 'bundle-%d' % (i+1)
+    for bundle in bundles:
+        labels = nib.load('%s/%s/Bundle_Label_And_Distance_Maps/%s__%s_labels.nii.gz' % (results_tractometry,subject,subject,bundle)).get_fdata().astype(np.uint8).flatten()
+        
         for metric in ['FA','MD','RD','AD']:
-            data = nib.load( '%s/%s/%s__%s.nii.gz'%(ground_truth_path,subject,bundle1,metric.lower()) ).get_fdata().flatten()
-            gt[(bundle2,metric)] = data[data > 0] [0]
+            data = nib.load( '%s/%s/%s__%s.nii.gz'%(ground_truth_path,subject,bundle,metric.lower()) ).get_fdata().flatten()
 
-    return gt
+            mem = []
+            gt = np.zeros(npoints)
+
+            for label,val in zip(labels,data):
+                if (label > 0) and (val > 0):# and (label not in mem):
+                    gt[label-1] = val
+                    mem.append(label)
+
+            stats_gt[(bundle,metric)] = gt
+
+    return stats_gt
 
 
 subject_means, subject_stds = load_subject_stats( '%s/%s/Bundle_Mean_Std_Per_Point/%s__mean_std_per_point.json' % (results_tractometry,subject,subject) )
@@ -419,4 +433,4 @@ if args.ground_truth:
 else:
     ground_truth = None
 
-plot_subject_stats(subject_means, subject_stds, ground_truth=ground_truth)
+plot_subject_stats(subject_means, subject_stds, gt=ground_truth)
