@@ -48,7 +48,7 @@ for i in range(nsubjects):
                         -ad  %s/%s/dti/results_DTInolin_AD.nii.gz     \
                         -rd  %s/%s/dti/results_DTInolin_RD.nii.gz     \
                         -adc %s/%s/dti/results_DTInolin_MD.nii.gz     \
-                        -fa  %s/%s/dti/results_DTInolin_FA.nii.gz -force -quiet' % (study,subject,study,subject,study,subject,study,subject,study,subject))
+                        -fa  %s/%s/dti/results_DTInolin_FA.nii.gz -force' % (study,subject,study,subject,study,subject,study,subject,study,subject))
 
     print('│   ├── Fitting MRDS')
     mrds_path = '%s/%s/mrds' % (study,subject)

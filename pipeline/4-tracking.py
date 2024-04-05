@@ -33,11 +33,11 @@ for i in range(nsubjects):
         os.system( 'mkdir %s/%s/mrds/results_MRDS_Diff_%s_BUNDLES'%(study,subject,modsel.upper()) )
 
     print('│   ├── Fiber tracking')
-    os.system('tckgen %s/%s/mrds/results_MRDS_Diff_%s_ODF_SH.nii.gz %s/%s/mrds/results_MRDS_Diff_%s_TRACKS.tck -select %d -seed_image %s -grad %s -force -quiet' % (study,subject,modsel.upper(),study,subject,modsel.upper(),ntracks,mask,scheme))
+    os.system('tckgen %s/%s/mrds/results_MRDS_Diff_%s_ODF_SH.nii.gz %s/%s/mrds/results_MRDS_Diff_%s_TRACKS.tck -select %d -seed_image %s -grad %s -force' % (study,subject,modsel.upper(),study,subject,modsel.upper(),ntracks,mask,scheme))
 
     print('│   ├── Tractogram segmentation')
-    os.system('tck2connectome %s/%s/mrds/results_MRDS_Diff_%s_TRACKS.tck %s %s/%s/mrds/results_MRDS_Diff_%s_CONNECTOME.csv -assignment_radial_search 1.0 -out_assignments %s/%s/mrds/results_MRDS_Diff_%s_NODES.txt -force -quiet' % (study,subject,modsel.upper(),roi,study,subject,modsel.upper(),study,subject,modsel.upper()))
-    os.system('connectome2tck %s/%s/mrds/results_MRDS_Diff_%s_TRACKS.tck %s/%s/mrds/results_MRDS_Diff_%s_NODES.txt %s/%s/mrds/results_MRDS_Diff_%s_BUNDLES/bundle -files per_edge -force -quiet' % (study,subject,modsel.upper(),study,subject,modsel.upper(),study,subject,modsel.upper()))
+    os.system('tck2connectome %s/%s/mrds/results_MRDS_Diff_%s_TRACKS.tck %s %s/%s/mrds/results_MRDS_Diff_%s_CONNECTOME.csv -assignment_radial_search 1.0 -out_assignments %s/%s/mrds/results_MRDS_Diff_%s_NODES.txt -force' % (study,subject,modsel.upper(),roi,study,subject,modsel.upper(),study,subject,modsel.upper()))
+    os.system('connectome2tck %s/%s/mrds/results_MRDS_Diff_%s_TRACKS.tck %s/%s/mrds/results_MRDS_Diff_%s_NODES.txt %s/%s/mrds/results_MRDS_Diff_%s_BUNDLES/bundle -files per_edge -force' % (study,subject,modsel.upper(),study,subject,modsel.upper(),study,subject,modsel.upper()))
 
     # copy data to tractometry input folder
     os.system('for roi in 1 3 5 7 9 11 13 15 17 19 21 23 25 27 29 31 33 35 37 39; do \

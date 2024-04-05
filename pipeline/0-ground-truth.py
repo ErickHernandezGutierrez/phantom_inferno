@@ -29,23 +29,23 @@ for i in range(nsubjects):
         os.system('dwi2tensor %s/ground_truth/%s/bundle-%d__dwi.nii.gz %s/ground_truth/%s/bundle-%d__tensor.nii.gz \
                         -grad %s \
                         -mask %s/bundle-%d__wm-mask.nii.gz \
-                        -force -quiet' % (study,subject,bundle,study,subject,bundle,scheme,phantom,bundle))
+                        -force' % (study,subject,bundle,study,subject,bundle,scheme,phantom,bundle))
 
         os.system('tensor2metric  %s/ground_truth/%s/bundle-%d__tensor.nii.gz \
                              -fa  %s/ground_truth/%s/bundle-%d__fa.nii.gz     \
                              -rd  %s/ground_truth/%s/bundle-%d__rd.nii.gz     \
                              -ad  %s/ground_truth/%s/bundle-%d__ad.nii.gz     \
                              -adc %s/ground_truth/%s/bundle-%d__md.nii.gz     \
-                             -force -quiet' % (study,subject,bundle,study,subject,bundle,study,subject,bundle,study,subject,bundle,study,subject,bundle))
+                             -force' % (study,subject,bundle,study,subject,bundle,study,subject,bundle,study,subject,bundle,study,subject,bundle))
         
     os.system('dwi2tensor %s/ground_truth/%s/dwi.nii.gz %s/ground_truth/%s/tensor.nii.gz \
                     -grad %s \
                     -mask %s/wm-mask.nii.gz \
-                    -force -quiet' % (study,subject,study,subject,scheme,phantom))
+                    -force' % (study,subject,study,subject,scheme,phantom))
 
     os.system('tensor2metric  %s/ground_truth/%s/tensor.nii.gz \
                         -fa  %s/ground_truth/%s/fa.nii.gz     \
                         -rd  %s/ground_truth/%s/rd.nii.gz     \
                         -ad  %s/ground_truth/%s/ad.nii.gz     \
                         -adc %s/ground_truth/%s/md.nii.gz     \
-                        -force -quiet' % (study,subject,study,subject,study,subject,study,subject,study,subject))
+                        -force' % (study,subject,study,subject,study,subject,study,subject,study,subject))
