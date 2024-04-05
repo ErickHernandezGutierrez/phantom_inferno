@@ -297,7 +297,7 @@ def success_rate(ref, mosemap):
 Generate volume fractions
 ------------------------------------------------------------
 """
-def generate_fracs(phantom, study, affine, header, masks, subjects, lesion_bundles, lesion_masks):
+def generate_fracs(phantom, study, affine, header, masks, subjects, lesion_bundles, lesion_masks, lesion_type):
     nbundles = phantom_info[phantom]['nbundles']
     X,Y,Z = phantom_info[phantom]['dims']
 
@@ -310,9 +310,14 @@ def generate_fracs(phantom, study, affine, header, masks, subjects, lesion_bundl
                 fracs[:,:,:, 3*bundle+1] = (masks[:,:,:, bundle]-lesion_masks[:,:,:, bundle]) * 0.35
                 fracs[:,:,:, 3*bundle+2] = (masks[:,:,:, bundle]-lesion_masks[:,:,:, bundle]) * 0.05
 
-                fracs[:,:,:, 3*bundle]   += lesion_masks[:,:,:, bundle] * 0.55
-                fracs[:,:,:, 3*bundle+1] += lesion_masks[:,:,:, bundle] * 0.45
-                fracs[:,:,:, 3*bundle+2] += lesion_masks[:,:,:, bundle] * 0.05
+                if lesion_type == 'demyelination':
+                    fracs[:,:,:, 3*bundle]   += lesion_masks[:,:,:, bundle] * 0.55
+                    fracs[:,:,:, 3*bundle+1] += lesion_masks[:,:,:, bundle] * 0.45
+                    fracs[:,:,:, 3*bundle+2] += lesion_masks[:,:,:, bundle] * 0.05
+                elif lesion_type == 'axonloss':
+                    fracs[:,:,:, 3*bundle]   += lesion_masks[:,:,:, bundle] * 0.25
+                    fracs[:,:,:, 3*bundle+1] += lesion_masks[:,:,:, bundle] * 0.65
+                    fracs[:,:,:, 3*bundle+2] += lesion_masks[:,:,:, bundle] * 0.05
             else:
                 fracs[:,:,:, 3*bundle]   = masks[:,:,:, bundle] * 0.65
                 fracs[:,:,:, 3*bundle+1] = masks[:,:,:, bundle] * 0.35
@@ -330,7 +335,7 @@ def generate_fracs(phantom, study, affine, header, masks, subjects, lesion_bundl
 Generate random diffusivities in a healthy range for every bundle and subject
 -----------------------------------------------------------------------------
 """
-def generate_diffs(phantom, study, affine, header, masks, subjects, lesion_bundles, lesion_masks):
+def generate_diffs(phantom, study, affine, header, masks, subjects, lesion_bundles, lesion_masks, lesion_type):
     nsubjects = len(subjects)
     nbundles = phantom_info[phantom]['nbundles']
     X,Y,Z = phantom_info[phantom]['dims']
@@ -339,8 +344,8 @@ def generate_diffs(phantom, study, affine, header, masks, subjects, lesion_bundl
     d_par_ec  = np.random.normal(loc=mean_d_par_ec,  scale=0.01, size=nsubjects*nbundles) * 1e-3
     d_iso = 3e-3 # TODO: make this variable
 
-    tortuosity_normal = load_polynomial()
-    tortuosity_demyelination = load_polynomial(type='demyelination')
+    tortuosity_normal = load_polynomial(type='normal')
+    tortuosity_lesion = load_polynomial(type=lesion_type)
 
     for i,subject in enumerate(subjects):
         diffs = np.zeros((X,Y,Z, 4*nbundles), dtype=np.float32)
@@ -349,7 +354,7 @@ def generate_diffs(phantom, study, affine, header, masks, subjects, lesion_bundl
         for bundle in range(nbundles):
             fracs_ec  = fracs[:,:,:, 3*bundle+1].flatten()
             d_perp_ec = tortuosity_normal(fracs_ec) * 1e-3
-            d_perp_ec_lesion = tortuosity_demyelination(fracs_ec) * 1e-3
+            d_perp_ec_lesion = tortuosity_lesion(fracs_ec) * 1e-3
             
             if bundle in lesion_bundles:
                 diffs[:,:,:, 4*bundle+2] = d_perp_ec.reshape(X,Y,Z) * (masks[:,:,:, bundle]-lesion_masks[:,:,:, bundle])

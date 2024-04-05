@@ -12,6 +12,7 @@ parser.add_argument('--template', default='templates/Phantomas', help='path to t
 parser.add_argument('--model', default='noddi', help="model for the phantom {multi-tensor,noddi}. [noddi]")
 parser.add_argument('--bundles', nargs='*', type=int, help='list of the bundles to be included in the phantom. [all]')
 parser.add_argument('--lesion_bundles', nargs='*', type=int, help='list of the bundles with lesion. []')
+parser.add_argument('--lesion_type', default='demyelination', help='type of lesion in the lesion bundles {demyelination,axonloss}. [demyelination]')
 
 parser.add_argument('--snr',       default=12,   type=int, help='signal to noise ratio. [12]')
 parser.add_argument('--ndirs',     default=5000, type=int, help='number of dispersion directions. [5000]')
@@ -55,6 +56,8 @@ else:
 lesion_bundles = args.lesion_bundles
 if len(lesion_bundles)>0:
     lesion_bundles = np.array([bundle-1 for bundle in lesion_bundles])
+
+lesion_type = args.lesion_type
 
 # number of bundles to include
 nselected = len(bundles)
@@ -164,9 +167,9 @@ pdds = pdds.reshape(nvoxels, 3*nbundles)
 
 subjects = ['sub-%.3d_ses-1'%(i+1) for i in range(nsubjects)]
 
-generate_fracs(phantom, study, affine, header, mask, subjects, lesion_bundles, lesion_mask)
+generate_fracs(phantom, study, affine, header, mask, subjects, lesion_bundles, lesion_mask, lesion_type)
 
-generate_diffs(phantom, study, affine, header, mask, subjects, lesion_bundles, lesion_mask)
+generate_diffs(phantom, study, affine, header, mask, subjects, lesion_bundles, lesion_mask, lesion_type)
 
 generate_phantom(pdds, compsize, mask, g, b, nsubjects, nvoxels, nsamples)
 
