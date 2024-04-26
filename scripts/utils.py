@@ -315,8 +315,8 @@ def generate_fracs(phantom, study, affine, header, masks, subjects, lesion_bundl
                     fracs[:,:,:, 3*bundle+1] += lesion_masks[:,:,:, bundle] * 0.45
                     fracs[:,:,:, 3*bundle+2] += lesion_masks[:,:,:, bundle] * 0.05
                 elif lesion_type == 'axonloss':
-                    fracs[:,:,:, 3*bundle]   += lesion_masks[:,:,:, bundle] * 0.25
-                    fracs[:,:,:, 3*bundle+1] += lesion_masks[:,:,:, bundle] * 0.65
+                    fracs[:,:,:, 3*bundle]   += lesion_masks[:,:,:, bundle] * 0.20
+                    fracs[:,:,:, 3*bundle+1] += lesion_masks[:,:,:, bundle] * 0.80
                     fracs[:,:,:, 3*bundle+2] += lesion_masks[:,:,:, bundle] * 0.05
             else:
                 fracs[:,:,:, 3*bundle]   = masks[:,:,:, bundle] * 0.65
