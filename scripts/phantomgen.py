@@ -11,7 +11,7 @@ parser.add_argument('scheme',     help='protocol file in format Nx4 text file wi
 parser.add_argument('--template', default='templates/Phantomas', help='path to the phantom structure template. [templates/Phantomas]')
 parser.add_argument('--model', default='noddi', help="model for the phantom {multi-tensor,noddi}. [noddi]")
 parser.add_argument('--bundles', nargs='*', type=int, help='list of the bundles to be included in the phantom. [all]')
-parser.add_argument('--lesion_bundles', nargs='*', type=int, help='list of the bundles with lesion. []')
+parser.add_argument('--lesion_bundles', nargs='*', default=[], type=int, help='list of the bundles with lesion. []')
 parser.add_argument('--lesion_type', default='demyelination', help='type of lesion in the lesion bundles {demyelination,axonloss}. [demyelination]')
 
 parser.add_argument('--snr',       default=12,   type=int, help='signal to noise ratio. [12]')
