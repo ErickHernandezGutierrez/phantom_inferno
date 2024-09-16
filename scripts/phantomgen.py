@@ -167,10 +167,13 @@ pdds = pdds.reshape(nvoxels, 3*nbundles)
 
 subjects = ['sub-%.3d_ses-1'%(i+1) for i in range(nsubjects)]
 
+print('|Generating fracs|')
 generate_fracs(phantom, study, affine, header, mask, subjects, lesion_bundles, lesion_mask, lesion_type)
 
+print('|Generating diffs|')
 generate_diffs(phantom, study, affine, header, mask, subjects, lesion_bundles, lesion_mask, lesion_type)
 
 generate_phantom(pdds, compsize, mask, g, b, nsubjects, nvoxels, nsamples)
 
+print('|Saving info|')
 save_phantom_info(args, scheme, bundles, lesion_bundles, kappa)

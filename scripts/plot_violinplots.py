@@ -11,6 +11,7 @@ parser.add_argument('--subject', default='group', help='subject. [group]')
 parser.add_argument('--phantom', default='templates/Phantomas', help='phantom template. [templates/Phantomas]')
 parser.add_argument('--ground_truth', help='path to the ground truth')
 parser.add_argument('--dti', help='path to the dti results')
+parser.add_argument('-lesion', help='add lesion', action='store_true')
 args = parser.parse_args()
 
 phantom = args.phantom
@@ -25,16 +26,16 @@ subject = args.subject
 results_ground_truth = args.ground_truth
 dti_results = args.dti
 
-metrics = ['FA', 'MD', 'RD', 'AD']
-#metrics = ['FA']
+#metrics = ['FA', 'MD', 'RD', 'AD']
+metrics = ['FA', 'RD', 'AD']
 
 background_color = '#E5E5E5'
 ground_truth_color = '#D92230'
 loc = {
     'FA': 0,
-    'MD': 1,
-    'RD': 2,
-    'AD': 3
+    #'MD': 1,
+    'RD': 1,
+    'AD': 2
 }
 ground_truth = {
     'FA': [],
@@ -42,6 +43,10 @@ ground_truth = {
     'AD': [],
     'RD': []
 }
+
+ground_truth = {}
+ground_truth_lesion = {}
+
 yticks = {
     'FA': [0.2, 0.4, 0.6, 0.8, 1.0],
     'MD': [0.4, 0.6, 0.8, 1.0],
@@ -81,6 +86,8 @@ facecolor = {
     'fixel-AD': '#F6AA92'
 }
 
+lesion_bundles = [4, 8, 12, 19]
+
 def lighten_color(color, amount=0.5):
     """
     Lightens the given color by multiplying (1-luminosity) by the given amount.
@@ -106,24 +113,55 @@ for i in range(nbundles):
     mask_filename = '%s/bundle-%d__wm-mask.nii.gz' % (phantom,i+1)
     masks[:,:,:, i] = nib.load( mask_filename ).get_fdata().astype(np.uint8)
 
+# load lesion masks
+lesion_masks = np.zeros((X,Y,Z,nbundles), dtype=np.uint8)
+for i in range(nbundles):
+    mask_filename = '%s/bundle-%d__lesion-mask.nii.gz' % (phantom,i+1)
+    lesion_masks[:,:,:, i] = nib.load( mask_filename ).get_fdata().astype(np.uint8)
+
 if args.ground_truth:
     for metric in metrics:
-        metric_bundles = np.array([])
         for i in range(nbundles):
-            metric_bundle = nib.load( '%s/bundle-%d__%s.nii.gz'%(results_ground_truth,i+1,metric.lower()) ).get_fdata() * masks[:,:,:, i]
+            metric_bundle = nib.load( '%s/bundle-%d__%s.nii.gz'%(results_ground_truth,i+1,metric.lower()) ).get_fdata()
 
             if metric in ['MD','AD','RD']:
                 metric_bundle *= 1e3
 
-            metric_bundle = metric_bundle[metric_bundle > 0]
-            metric_bundles = np.concatenate((metric_bundles, metric_bundle), axis=None)
-        ground_truth[metric] = np.mean(metric_bundles)
+            if args.lesion and (i in lesion_bundles):
+                control = metric_bundle * (masks[:,:,:, i]-lesion_masks[:,:,:, i])
+            else:
+                control = metric_bundle * masks[:,:,:, i]
+            if args.lesion:
+                lesion  = metric_bundle * lesion_masks[:,:,:, i]
 
-font_size = 40
+            control = control[control > 0]
+            if args.lesion:
+                lesion = lesion[lesion > 0]
+            
+            ground_truth[(i,metric)] = np.mean(control)
+            if args.lesion and (i in lesion_bundles):
+                ground_truth_lesion[(i,metric)] = np.mean(lesion)
+
+def set_violin(violin, color, body_linewidth=1, part_linewidth=5, alpha=0.75):
+    for pc in violin['bodies']:
+        pc.set_facecolor( color )
+        pc.set_edgecolor( lighten_color(color, 1.5) )
+        pc.set_linewidth( body_linewidth )
+        pc.set_alpha( alpha )
+    for partname in ['cmeans']:#,'cmedians'):
+        vp = violin[partname]
+        vp.set_edgecolor( lighten_color(color, 1.2) )
+        vp.set_linewidth( part_linewidth )
+
+font_size = 55
 font = {'size' : font_size}
 matplotlib.rc('font', **font)
 plt.rcParams["font.family"] = "Times New Roman"
-fig, ax = plt.subplots(nrows=4, ncols=1, figsize=(50, 35))
+fig, ax = plt.subplots(nrows=3, ncols=1, figsize=(50, 35), sharex=True)
+
+lesion_bundles = [4, 8, 12, 19]
+
+comp_data = {}
 
 for metric in metrics:
     mrds_data = []
@@ -146,36 +184,25 @@ for metric in metrics:
             data *= 1e3
         dti_data.append(data)
 
+        # plot ground-truth
+        ax[ loc[metric] ].hlines(y=ground_truth[(i,metric)], xmin=(i+1)-0.25, xmax=(i+1)+0.25, color=ground_truth_color, linewidth=3, zorder=10)
+        if args.lesion and (i in lesion_bundles):
+            ax[ loc[metric] ].hlines(y=ground_truth_lesion[(i,metric)], xmin=(i+1)-0.25, xmax=(i+1)+0.25, color='purple', linewidth=3, zorder=10)
+
     # plot data
-    violin = ax[ loc[metric] ].violinplot(dti_data, showmeans=False, showmedians=True, showextrema=False, positions=[i+1 for i in range(nbundles)])
-    for pc in violin['bodies']:
-        pc.set_facecolor( lighten_color(color[metric], 0.2) )
-        pc.set_edgecolor( color[metric] )
-        pc.set_linewidth(3)
-        pc.set_alpha(0.75)
-    for partname in ['cmedians']:
-        vp = violin[partname]
-        vp.set_edgecolor( color[metric] )
-        vp.set_linewidth(3)
+    violin = ax[ loc[metric] ].violinplot(dti_data, showmeans=True, showmedians=False, showextrema=False, positions=[i+1 for i in range(nbundles)])
+    set_violin(violin, color[metric])
 
-    violin = ax[ loc[metric] ].violinplot(mrds_data, showmeans=False, showmedians=True, showextrema=False)
-    for pc in violin['bodies']:
-        pc.set_facecolor( lighten_color(color['fixel-'+metric], 0.2) )
-        pc.set_edgecolor( color['fixel-'+metric] )
-        pc.set_linewidth(3)
-        pc.set_alpha(0.75)
-    for partname in ['cmedians']:
-        vp = violin[partname]
-        vp.set_edgecolor( color['fixel-'+metric] )
-        vp.set_linewidth(3)
+    violin = ax[ loc[metric] ].violinplot(mrds_data, showmeans=True, showmedians=False, showextrema=False)
+    set_violin(violin, color['fixel-'+metric])
 
-    ax[ loc[metric] ].hlines(y=ground_truth[metric], xmin=0.85, xmax=20.15, color=ground_truth_color, linewidth=3, zorder=0)
-    ax[ loc[metric] ].set_xticks([i+1 for i in range(nbundles)])
+    ax[ loc[metric] ].set_xticks([i+1 for i in range(nbundles)], labels=['bundle-%d'%(i+1) for i in range(nbundles)], rotation=-45)
     ax[ loc[metric] ].set_yticks(yticks[metric])
     ax[ loc[metric] ].set_ylabel(ylabels[metric])
-    ax[ loc[metric] ].set_ylim(ylims[metric])
-    ax[ loc[metric] ].set_xlabel('Bundle')
+    #ax[ loc[metric] ].set_ylim(ylims[metric])
+    #ax[ loc[metric] ].set_xlabel('Bundle')
     ax[ loc[metric] ].set_facecolor(background_color)
 
+plt.subplots_adjust(hspace=0.05)
 fig.savefig('%s/violinplots.png' % (results_tractometry), bbox_inches='tight')
 plt.show()

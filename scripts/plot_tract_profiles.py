@@ -6,15 +6,96 @@ from utils import phantom_info
 
 parser = argparse.ArgumentParser(description='Plot output tractometry statistics')
 parser.add_argument('input_path', help='input path with the results of the tractometry')
-parser.add_argument('subject', help='subject')
+parser.add_argument('--bundles', nargs='*', help='bundles. [all]')
+parser.add_argument('--metrics', default=['FA','RD','AD'], nargs='*', help='metrics to the included. [FA,RD,AD]')
+parser.add_argument('--subject', default='group', help='subject. [group]')
+parser.add_argument('--phantom', default='templates/Phantomas', help='phantom template. [templates/Phantomas]')
 parser.add_argument('--ground_truth', help='path to the ground truth')
+parser.add_argument('-nufo', help='add NuFO to the plot', action='store_true')
+parser.add_argument('-second_var', help='add second variance to the plot', action='store_true')
 args = parser.parse_args()
 
+phantom = args.phantom
+nbundles = phantom_info[phantom]['nbundles']
+
 results_tractometry = args.input_path
+if args.bundles:
+    bundles = ['bundle-%d'%int(i) for i in args.bundles]
+else:
+    bundles = ['bundle-%d'%(i+1) for i in range(nbundles)]
+metrics = args.metrics
 subject = args.subject
 ground_truth_path = args.ground_truth
+nufo = args.nufo
 
 npoints = 20
+
+"""loc = {
+    'FA': 0,
+    'MD': 1,
+    'RD': 2,
+    'AD': 3,
+    'fixel-FA': 0,
+    'fixel-MD': 1,
+    'fixel-RD': 2,
+    'fixel-AD': 3
+}"""
+loc = {
+    'FA': 0,
+    'RD': 1,
+    'AD': 2,
+    'fixel-FA': 0,
+    'fixel-RD': 1,
+    'fixel-AD': 2
+}
+
+
+#background_color = '#202946'
+#background_color = '#D1D2D3'
+#background_color = '#292C35'
+#background_color = '#FFFFFF'
+background_color = '#E5E5E5'
+
+#ground_truth_color = '#000000'
+ground_truth_color = '#D92230'
+nufo_color = 'black' #'#FF7F00'
+
+color = {
+    'FA': '#1f77b4',
+    'MD': '#1f77b4',
+    'RD': '#1f77b4',
+    'AD': '#1f77b4',
+    'fixel-FA': '#2ca02c',
+    'fixel-MD': '#2ca02c',
+    'fixel-RD': '#2ca02c',
+    'fixel-AD': '#2ca02c'
+}
+
+facecolor = {
+    'FA': '#aec7e8',
+    'MD': '#aec7e8',
+    'RD': '#aec7e8',
+    'AD': '#aec7e8',
+    'fixel-FA': '#98df8a',
+    'fixel-MD': '#98df8a',
+    'fixel-RD': '#98df8a',
+    'fixel-AD': '#98df8a'
+}
+
+yticks = {
+    'FA': [0.0, 0.2, 0.4, 0.6, 0.8, 1.0],
+    'MD': [0.5, 0.6, 0.7, 0.8, 0.9, 1.0],
+    'RD': [0.1, 0.2, 0.3, 0.4, 0.5, 0.6],
+    'AD': [0.4, 0.8, 1.2, 1.6, 2.0, 2.4]
+}
+
+def is_valid(bundle_name, metric):
+    dti_metrics = ['ad_metric', 'rd_metric', 'md_metric', 'fa_metric']
+
+    if (bundle_name in metric) or (metric in dti_metrics):
+        return True
+    
+    return False
 
 def rename_metric(bundle_name, metric):
     if 'ad' in metric:
@@ -50,6 +131,92 @@ def rename_metric(bundle_name, metric):
     elif 'nufo' in metric:
         return 'NuFO'
 
+def lighten_color(color, amount=0.5):
+    """
+    Lightens the given color by multiplying (1-luminosity) by the given amount.
+    Input can be matplotlib color string, hex string, or RGB tuple.
+
+    Examples:
+    >> lighten_color('g', 0.3)
+    >> lighten_color('#F034A3', 0.6)
+    >> lighten_color((.3,.55,.1), 0.5)
+    """
+    import matplotlib.colors as mc
+    import colorsys
+    try:
+        c = mc.cnames[color]
+    except:
+        c = color
+    c = colorsys.rgb_to_hls(*mc.to_rgb(c))
+    return colorsys.hls_to_rgb(c[0], 1 - amount * (1 - c[1]), c[2])
+
+def plot_subject_stats(means, stds, alpha=0.95, font_size=55, linewith=7, gt=None):
+    font = {'size' : font_size}
+    matplotlib.rc('font', **font)
+    plt.rcParams["font.family"] = "Times New Roman"
+
+    for bundle in bundles:
+        fig, ax = plt.subplots(nrows=1, ncols=3, figsize=(50,8))
+        #fig.suptitle('%s, %s' % (subject,bundle))
+
+        for metric in metrics:
+            mean = np.array(means[(bundle,metric)]).ravel()
+            std  = np.array(stds[(bundle,metric)]).ravel()
+            fixel_mean = np.array(means[(bundle,'fixel-'+metric)]).ravel()
+            fixel_std  = np.array(stds[(bundle,'fixel-'+metric)]).ravel()
+            dim = np.arange(1, len(mean)+1, 1)
+
+            if metric!='FA':
+                mean *= 1e3
+                std *= 1e3
+                fixel_mean *= 1e3
+                fixel_std *= 1e3
+                if ground_truth != None:
+                    gt[(bundle,metric)] *= 1e3
+
+            # plot ground truth
+            if ground_truth != None:
+                ax[ loc[metric] ].plot(dim, gt[(bundle,metric)], color=ground_truth_color, linewidth=7, solid_capstyle='round', label='GT', zorder=35)
+
+            # plot DTI metrics
+            if args.second_var:
+                ax[ loc[metric] ].fill_between(dim, mean-2*std, mean+2*std, facecolor=lighten_color(color[metric], 1.25), edgecolor='black', zorder=0)
+            ax[ loc[metric] ].fill_between(dim, mean-std, mean+std, facecolor=facecolor[metric], zorder=5)
+            ax[ loc[metric] ].plot(dim, mean, color=color[metric], linewidth=linewith, solid_capstyle='round', label=metric, zorder=10)
+
+            # plot MTM metrics
+            if args.second_var:
+                ax[ loc[metric] ].fill_between(dim, fixel_mean-2*fixel_std, fixel_mean+2*fixel_std, facecolor=lighten_color(color['fixel-'+metric], 1.25), edgecolor='black', zorder=15)
+            ax[ loc[metric] ].fill_between(dim, fixel_mean-fixel_std, fixel_mean+fixel_std, facecolor=facecolor['fixel-'+metric], zorder=20)
+            ax[ loc[metric] ].plot(dim, fixel_mean, color=color['fixel-'+metric], linewidth=linewith, solid_capstyle='round', label='fixel-'+metric, zorder=25)
+
+            # add plot info
+            #ax[ loc[metric] ].set_xlabel('Location along the Bundle')
+            if metric != 'FA':
+                ax[ loc[metric] ].set_ylabel(metric + r' [$\mu m^2/ms$]')
+            else:
+                ax[ loc[metric] ].set_ylabel(metric)
+            ax[ loc[metric] ].set_facecolor(background_color)
+            ax[ loc[metric] ].set_xticks( np.arange(1, len(mean)+1, 2) )
+            ax[ loc[metric] ].set_yticks( yticks[metric] )
+            #ax[ loc[metric] ].legend(loc='upper right')
+            #ax[ loc[metric] ].grid(True)
+
+            if args.nufo:
+                ax2 = ax[ loc[metric] ].twinx()
+                ax2.plot(dim,means[(bundle,'NuFO')], linewidth=7, color=nufo_color, solid_capstyle='round', label='N', zorder=30)
+                ax2.set_ylim( [0,5] )
+                ax2.set_yticks( [0,1,2,3,4,5] )
+                #ax2.set_yticks( np.arange(0,120,20) )
+                if metric == 'AD':
+                    ax2.set_ylabel(r'Ground Truth $N$')
+                #if args.legend:
+                #ax2.legend(loc='upper right', prop={'size': 12})
+
+        plt.subplots_adjust(wspace=0.25)
+        fig.savefig('%s/%s__%s.png' % (results_tractometry,subject,bundle), bbox_inches='tight')
+        plt.show()
+
 def load_subject_stats(json_filename):
     json_file = open( json_filename )
 
@@ -77,122 +244,16 @@ def load_subject_stats(json_filename):
 
     return stats_mean, stats_std
 
-loc = {
-    'FA': (0,0),
-    'MD': (0,1),
-    'RD': (1,0),
-    'AD': (1,1),
-    'fixel-FA': (0,0),
-    'fixel-MD': (0,1),
-    'fixel-RD': (1,0),
-    'fixel-AD': (1,1)
-}
-
-"""color = {
-    'FA': '#7FBF7F',
-    'MD': '#7FBF7F',
-    'RD': '#7FBF7F',
-    'AD': '#7FBF7F',
-    'fixel-FA': '#7E7EFD',
-    'fixel-MD': '#7E7EFD',
-    'fixel-RD': '#7E7EFD',
-    'fixel-AD': '#7E7EFD'
-} """
-
-#background_color = '#202946'
-#background_color = '#D1D2D3'
-background_color = '#292C35'
-
-#ground_truth_color = '#000000'
-ground_truth_color = '#A0288D'
-
-color = {
-    'FA': '#0E7D48',
-    'MD': '#107B7F',
-    'RD': '#172E73',
-    'AD': '#431B6B',
-    'fixel-FA': '#AD151D',
-    'fixel-MD': '#AE3C21',
-    'fixel-RD': '#B77A21',
-    'fixel-AD': '#C0B324'
-}
-
-
-facecolor = {
-    'FA': '#9CD1B6',
-    'MD': '#97D1D3',
-    'RD': '#9A9CCB',
-    'AD': '#AC9AC7',
-    'fixel-FA': '#F6AA92',
-    'fixel-MD': '#F8B89A',
-    'fixel-RD': '#FED6A3',
-    'fixel-AD': '#FFF7B0'
-}
-
-def plot_subject_stats(means, stds, alpha=0.55, font_size=15, gt=None):
-    phantom = 'templates/Phantomas'
-    nbundles = phantom_info[phantom]['nbundles']
-    bundles = ['bundle-%d'%(i+1) for i in range(nbundles)]
-
-    font = {'size' : font_size}
-    matplotlib.rc('font', **font)
-
-    for bundle in bundles:
-        fig, ax = plt.subplots(nrows=2, ncols=2, figsize=(16,9))
-        fig.suptitle('%s, %s' % (subject,bundle))
-
-        for metric in ['FA','MD','RD','AD']:
-            mean = np.array(means[(bundle,metric)]).ravel()
-            std  = np.array(stds[(bundle,metric)]).ravel()
-            fixel_mean = np.array(means[(bundle,'fixel-'+metric)]).ravel()
-            fixel_std  = np.array(stds[(bundle,'fixel-'+metric)]).ravel()
-            dim = np.arange(1, len(mean)+1, 1)
-
-            if metric!='FA':
-                mean *= 1e3
-                std *= 1e3
-                fixel_mean *= 1e3
-                fixel_std *= 1e3
-                if ground_truth != None:
-                    gt[(bundle,metric)] *= 1e3 #"""
-
-            # plot ground truth
-            if ground_truth != None:
-                ax[ loc[metric] ].plot(dim, gt[(bundle,metric)], color=ground_truth_color, linewidth=3, solid_capstyle='round', label='GT')
-
-            # plot DTI metrics
-            ax[ loc[metric] ].plot(dim, mean, color=color[metric], linewidth=3, solid_capstyle='round', label=metric)
-            ax[ loc[metric] ].fill_between(dim, mean-std, mean+std, facecolor=facecolor[metric], alpha=alpha)
-
-            # plot MTM metrics
-            ax[ loc[metric] ].plot(dim, fixel_mean, color=color['fixel-'+metric], linewidth=3, solid_capstyle='round', label='fixel-'+metric)
-            ax[ loc[metric] ].fill_between(dim, fixel_mean-fixel_std, fixel_mean+fixel_std, facecolor=facecolor['fixel-'+metric], alpha=alpha)
-
-            # add plot info
-            ax[ loc[metric] ].set_xlabel('Location along the streamline')
-            if metric != 'FA':
-                ax[ loc[metric] ].set_ylabel(metric + r' [$\mu m^2/ms$]')
-            else:
-                ax[ loc[metric] ].set_ylabel(metric)
-            ax[ loc[metric] ].set_facecolor(background_color)
-            ax[ loc[metric] ].set_xticks( np.arange(1, len(mean)+1, 2) )
-            ax[ loc[metric] ].legend(loc='upper right')
-            ax[ loc[metric] ].grid(True)
-
-        fig.savefig('%s/%s__%s.png' % (results_tractometry,subject,bundle), bbox_inches='tight')
-    #plt.show()
-
 def load_group_stats(json_filename):
     with open(json_filename, 'r+') as f:
-        #mean_std_per_point = json.load(f)
-        mean_std_per_point = list(json.load(f).values())[0]
+        mean_std_per_point = json.load(f)
 
     stats_means = {}
     stats_stds = {}
 
     for bundle_name, bundle_stats in mean_std_per_point.items():
         for metric, metric_stats in bundle_stats.items():
-            if (bundle_name in metric) or (not 'bundle' in metric): #bundle
+            if is_valid(bundle_name, metric):
                 nb_points = len(metric_stats)
                 num_digits_labels = len(list(metric_stats.keys())[0])
                 means = []
@@ -208,11 +269,7 @@ def load_group_stats(json_filename):
                     means += [mean]
                     stds += [std]
 
-                color = '0x727272'
-
                 metric = rename_metric(bundle_name, metric)
-
-                print( (bundle_name,metric) )
 
                 # Robustify for missing data
                 means = np.array(list(itertools.zip_longest(*means,
@@ -229,9 +286,8 @@ def load_group_stats(json_filename):
                             means[i, _nan] = -1
                             stds[i, _nan] = -1
 
-                ########
-                means = np.squeeze(means)
-                stds = np.squeeze(stds)
+                means = np.average(means, axis=1)
+                stds = np.average(stds, axis=1)
 
                 stats_means[(bundle_name, metric)] = means
                 stats_stds[(bundle_name, metric)] = stds
@@ -308,8 +364,6 @@ def plot_subject_label_stats():
 
     fig.savefig(os.path.join(output_path, 'labels.png'.format(bundle, metric)), bbox_inches='tight')
     #plt.show()
-
-#plot_subject_label_stats()
 
 def plot_metrics_stats(means, stds, title, xlabel, ylabel, fill_color):
     
@@ -391,15 +445,6 @@ def plot_metrics_stats_comparison(means, stds, fixel_means, fixel_stds, title, x
     plt.close(fig)
     return fig
 
-def plot_gt_stats(ax, mean, title='', xlabel='', ylabel='', color='#000000', alpha=0.55):
-    dim = np.arange(1, len(mean)+1, 1)
-
-    #if ylabel in ['AD', 'RD', 'MD', 'fixel-AD', 'fixel-RD', 'fixel-MD']:
-        #mean *= 1e3
-    #ax.set_facecolor('#E5E5E5')
-
-    ax.plot(dim, mean, linewidth=5, color='red', solid_capstyle='round', label='GT '+ylabel)
-
 def load_subject_ground_truth( ground_truth_path ):
     phantom = 'templates/Phantomas'
     nbundles = phantom_info[phantom]['nbundles']
@@ -410,7 +455,7 @@ def load_subject_ground_truth( ground_truth_path ):
     for bundle in bundles:
         labels = nib.load('%s/%s/Bundle_Label_And_Distance_Maps/%s__%s_labels.nii.gz' % (results_tractometry,subject,subject,bundle)).get_fdata().astype(np.uint8).flatten()
         
-        for metric in ['FA','MD','RD','AD']:
+        for metric in metrics:
             data = nib.load( '%s/%s/%s__%s.nii.gz'%(ground_truth_path,subject,bundle,metric.lower()) ).get_fdata().flatten()
 
             mem = []
@@ -425,12 +470,14 @@ def load_subject_ground_truth( ground_truth_path ):
 
     return stats_gt
 
-
-subject_means, subject_stds = load_subject_stats( '%s/%s/Bundle_Mean_Std_Per_Point/%s__mean_std_per_point.json' % (results_tractometry,subject,subject) )
+if subject == 'group':
+    means, stds = load_group_stats( '%s/Statistics/mean_std_per_point.json'%(results_tractometry) )
+else:
+    means, stds = load_subject_stats( '%s/%s/Bundle_Mean_Std_Per_Point/%s__mean_std_per_point.json'%(results_tractometry,subject,subject) )
 
 if args.ground_truth:
     ground_truth = load_subject_ground_truth( ground_truth_path )
 else:
     ground_truth = None
 
-plot_subject_stats(subject_means, subject_stds, gt=ground_truth)
+plot_subject_stats(means, stds, gt=ground_truth)
